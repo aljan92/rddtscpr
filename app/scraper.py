@@ -87,14 +87,48 @@ async def scrape_subreddit_posts_json(target: str, sort: str, timeframe: str, li
             
         return posts
 
-async def scrape_post_comments_json(post_url: str, sort: str, limit: int, proxy: str = None) -> list:
+def extract_comments_recursive(children: list, limit: int, include_replies: bool) -> list:
+    """Extrahiert Kommentare und ggf. deren Replies rekursiv und flacht sie ab."""
+    comments = []
+    for child in children:
+        if len(comments) >= limit:
+            break
+        if child.get("kind") != "t1":
+            continue
+            
+        data = child.get("data", {})
+        parent_id = data.get("parent_id", "")
+        is_reply = not parent_id.startswith("t3_")
+        
+        comments.append({
+            "comment_text": data.get("body", ""),
+            "upvotes": data.get("ups", 0),
+            "author": data.get("author", "[deleted]"),
+            "is_reply": is_reply
+        })
+        
+        if include_replies:
+            replies_payload = data.get("replies")
+            if isinstance(replies_payload, dict):
+                reply_children = replies_payload.get("data", {}).get("children", [])
+                sub_comments = extract_comments_recursive(reply_children, limit - len(comments), include_replies)
+                comments.extend(sub_comments)
+                
+    return comments
+
+async def scrape_post_comments_json(post_url: str, sort: str, limit: int, include_replies: bool = False, proxy: str = None) -> list:
     """
     Holt Kommentare eines Posts über den .json-Trick.
     """
     clean_post_url = clean_url(post_url)
     json_url = f"{clean_post_url.rstrip('/')}.json"
     
-    params = {"sort": sort, "limit": limit}
+    # Wenn wir keine Replies wollen, limitieren wir direkt bei Reddit.
+    # Wenn wir Replies wollen, holen wir mehr, da wir sie sonst abschneiden könnten.
+    params = {"sort": sort}
+    if not include_replies:
+        params["limit"] = limit
+        
     cookies = get_stored_cookies()
     proxies = {"all://": proxy} if proxy else None
     
@@ -115,23 +149,7 @@ async def scrape_post_comments_json(post_url: str, sort: str, limit: int, proxy:
         comments_payload = payload[1]
         children = comments_payload.get("data", {}).get("children", [])
         
-        comments = []
-        for child in children[:limit]:
-            data = child.get("data", {})
-            if child.get("kind") != "t1":  # t1 = Kommentar
-                continue
-                
-            parent_id = data.get("parent_id", "")
-            is_reply = not parent_id.startswith("t3_")  # Wenn parent_id nicht mit t3_ (Post) anfängt, ist es ein Reply
-            
-            comments.append({
-                "comment_text": data.get("body", ""),
-                "upvotes": data.get("ups", 0),
-                "author": data.get("author", "[deleted]"),
-                "is_reply": is_reply
-            })
-            
-        return comments
+        return extract_comments_recursive(children, limit, include_replies)
 
 # =====================================================================
 # METODE 2: Playwright-Stealth (Robuster Browser-Fallback)
@@ -261,12 +279,16 @@ async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: s
             await context.close()
             await browser.close()
 
-async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, proxy: str = None) -> list:
+async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, include_replies: bool = False, proxy: str = None) -> list:
     """
     Holt Kommentare eines Posts über Playwright, indem die .json-URL im Browser geladen wird.
     """
     clean_post_url = clean_url(post_url)
-    url = f"{clean_post_url.rstrip('/')}.json?sort={sort}&limit={limit}"
+    # Wenn wir keine Replies wollen, limitieren wir direkt.
+    params = f"sort={sort}"
+    if not include_replies:
+        params += f"&limit={limit}"
+    url = f"{clean_post_url.rstrip('/')}.json?{params}"
     
     logger.info(f"Playwright: Öffne JSON-URL {url}")
     
@@ -286,23 +308,7 @@ async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, 
             comments_payload = payload[1]
             children = comments_payload.get("data", {}).get("children", [])
             
-            comments = []
-            for child in children[:limit]:
-                data = child.get("data", {})
-                if child.get("kind") != "t1":
-                    continue
-                    
-                parent_id = data.get("parent_id", "")
-                is_reply = not parent_id.startswith("t3_")
-                
-                comments.append({
-                    "comment_text": data.get("body", ""),
-                    "upvotes": data.get("ups", 0),
-                    "author": data.get("author", "[deleted]"),
-                    "is_reply": is_reply
-                })
-                
-            return comments
+            return extract_comments_recursive(children, limit, include_replies)
         finally:
             await page.close()
             await context.close()
@@ -334,19 +340,19 @@ async def scrape_subreddit_playwright_fallback(target: str, sort: str, timeframe
     # Hilfsfunktion zur Entkopplung
     return await scrape_subreddit_posts_playwright(target, sort, timeframe, limit, proxy)
 
-async def get_post_comments(post_url: str, sort: str, limit: int, proxy: str = None) -> tuple[list, str]:
+async def get_post_comments(post_url: str, sort: str, limit: int, include_replies: bool = False, proxy: str = None) -> tuple[list, str]:
     """
     Versucht zuerst die JSON-Methode. Schlägt diese fehl, wird Playwright aufgerufen.
     Gibt (comments_list, "json"|"playwright") zurück.
     """
     try:
-        comments = await scrape_post_comments_json(post_url, sort, limit, proxy)
+        comments = await scrape_post_comments_json(post_url, sort, limit, include_replies, proxy)
         logger.info("Kommentare erfolgreich via JSON-Trick geladen.")
         return comments, "json"
     except Exception as e:
         logger.warning(f"JSON-Trick für Kommentare fehlgeschlagen: {e}. Starte Playwright Fallback...")
         try:
-            comments = await scrape_post_comments_playwright(post_url, sort, limit, proxy)
+            comments = await scrape_post_comments_playwright(post_url, sort, limit, include_replies, proxy)
             return comments, "playwright"
         except Exception as pe:
             logger.error(f"Playwright Fallback ebenfalls fehlgeschlagen: {pe}")

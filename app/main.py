@@ -134,6 +134,7 @@ async def api_post_comments(
     post_url: str,
     sort: str = "confidence",
     limit: int = 10,
+    include_replies: bool = False,
     db: Session = Depends(get_db)
 ):
     """
@@ -155,6 +156,7 @@ async def api_post_comments(
             post_url=post_url,
             sort=sort,
             limit=limit,
+            include_replies=include_replies,
             proxy=proxy
         )
         
@@ -175,6 +177,7 @@ async def api_post_comments(
             "meta": {
                 "scraped_url": f"{clean_url(post_url)}?sort={sort}",
                 "comment_count": len(comments),
+                "include_replies": include_replies,
                 "method_used": method_used,
                 "execution_time_ms": duration
             },

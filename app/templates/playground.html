@@ -150,6 +150,10 @@
                             <option value="qa">Q&A</option>
                         </select>
                     </div>
+                    <div class="flex items-center space-x-2.5 pt-1.5">
+                        <input type="checkbox" id="include-replies-checkbox" class="w-4.5 h-4.5 bg-reddit-dark border border-reddit-border rounded accent-reddit-orange focus:ring-reddit-orange focus:ring-offset-reddit-dark">
+                        <label for="include-replies-checkbox" class="text-xs font-semibold text-slate-400 cursor-pointer select-none hover:text-slate-300 transition-all duration-150">Antworten (Replies) einbeziehen</label>
+                    </div>
                 </div>
 
                 <!-- Limit Field -->
@@ -275,7 +279,8 @@
                 const postUrl = encodeURIComponent(document.getElementById('post-url-input').value);
                 const sort = document.getElementById('comments-sort').value;
                 const limit = document.getElementById('limit-input').value;
-                url = `/v1/post-comments?post_url=${postUrl}&sort=${sort}&limit=${limit}`;
+                const includeReplies = document.getElementById('include-replies-checkbox').checked;
+                url = `/v1/post-comments?post_url=${postUrl}&sort=${sort}&limit=${limit}&include_replies=${includeReplies}`;
             }
 
             const startTime = performance.now();
