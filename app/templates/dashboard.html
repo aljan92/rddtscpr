@@ -180,6 +180,10 @@
                             <label class="text-xs text-slate-400 font-semibold">Fallback-Proxy (optional)</label>
                             <input type="text" name="fallback_proxy_url" placeholder="http://user:pass@host:port" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
                         </div>
+                        <div class="md:col-span-2 space-y-1">
+                            <label class="text-xs text-slate-400 font-semibold">reddit_session Cookie-Wert (optional – umgeht automatischen Login)</label>
+                            <input type="text" name="reddit_session" placeholder="z. B. 12345678%2Cabcd... (Aus dem Browser-Login kopieren)" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                        </div>
                         
                         <div class="md:col-span-2 pt-2">
                             <button type="submit" class="w-full flex items-center justify-center space-x-2 bg-reddit-orange hover:bg-reddit-orange/90 text-white font-semibold py-2.5 px-4 rounded-xl transition-all duration-300 hover:scale-[1.005] active:scale-[0.995]">
@@ -364,6 +368,10 @@
                      <label class="text-xs text-slate-400 font-semibold">Fallback-Proxy</label>
                      <input type="text" id="edit-fallback-proxy" name="fallback_proxy_url" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all">
                 </div>
+                <div class="space-y-1">
+                     <label class="text-xs text-slate-400 font-semibold">reddit_session Cookie-Wert (optional – überschreibt Session)</label>
+                     <input type="text" id="edit-session" name="reddit_session" placeholder="z. B. 12345678%2Cabcd..." class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all">
+                </div>
                  
                 <div class="pt-4 flex justify-end space-x-3">
                      <button type="button" onclick="closeEditModal()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold px-4 py-2 rounded-xl transition-all">
@@ -462,11 +470,13 @@
             const usernameInput = document.getElementById('edit-username');
             const proxyInput = document.getElementById('edit-proxy');
             const fallbackProxyInput = document.getElementById('edit-fallback-proxy');
+            const sessionInput = document.getElementById('edit-session');
             
             form.action = `/admin/accounts/${accountId}/edit`;
             usernameInput.value = username;
             proxyInput.value = proxyUrl === 'Kein Proxy' ? '' : proxyUrl;
             fallbackProxyInput.value = fallbackProxyUrl === 'Kein Proxy' ? '' : fallbackProxyUrl;
+            sessionInput.value = '';
             
             modal.classList.remove('hidden');
             modal.classList.add('flex');

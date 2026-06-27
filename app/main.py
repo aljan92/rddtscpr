@@ -291,21 +291,50 @@ async def admin_dashboard(
         }
     )
 
+def make_session_state_from_cookie(cookie_val: str) -> str:
+    cookie_val = cookie_val.strip()
+    if cookie_val.startswith("reddit_session="):
+        cookie_val = cookie_val.split("=", 1)[1]
+    cookie_val = cookie_val.split(";")[0].strip()
+    
+    state = {
+        "cookies": [
+            {
+                "name": "reddit_session",
+                "value": cookie_val,
+                "domain": ".reddit.com",
+                "path": "/",
+                "expires": -1,
+                "httpOnly": True,
+                "secure": True,
+                "sameSite": "Lax"
+            }
+        ]
+    }
+    return json.dumps(state)
+
 @app.post("/admin/accounts/add")
 async def admin_add_account(
     username: str = Form(...),
     password: str = Form(...),
     proxy_url: str = Form(None),
     fallback_proxy_url: str = Form(None),
+    reddit_session: str = Form(None),
     admin_user: str = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
     try:
+        session_state = None
+        if reddit_session and reddit_session.strip():
+            session_state = make_session_state_from_cookie(reddit_session)
+            
         new_acc = RedditAccount(
             username=username.strip(),
             password=password.strip(),
             proxy_url=proxy_url.strip() if proxy_url else None,
-            fallback_proxy_url=fallback_proxy_url.strip() if fallback_proxy_url else None
+            fallback_proxy_url=fallback_proxy_url.strip() if fallback_proxy_url else None,
+            session_state=session_state,
+            is_active=True if session_state else False
         )
         db.add(new_acc)
         db.commit()
@@ -406,6 +435,7 @@ async def admin_edit_account(
     password: str = Form(None),
     proxy_url: str = Form(None),
     fallback_proxy_url: str = Form(None),
+    reddit_session: str = Form(None),
     admin_user: str = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
@@ -419,6 +449,19 @@ async def admin_edit_account(
             acc.password = password.strip()
         acc.proxy_url = proxy_url.strip() if proxy_url else None
         acc.fallback_proxy_url = fallback_proxy_url.strip() if fallback_proxy_url else None
+        
+        if reddit_session and reddit_session.strip():
+            acc.session_state = make_session_state_from_cookie(reddit_session)
+            acc.is_active = True
+            acc.failure_count = 0
+            try:
+                import os
+                screenshot_path = f"./app/data/last_error_{acc.username}.png"
+                if os.path.exists(screenshot_path):
+                    os.remove(screenshot_path)
+            except Exception:
+                pass
+                
         db.commit()
         return RedirectResponse(url=f"/admin/dashboard?success=Konto+{acc.username}+erfolgreich+aktualisiert!", status_code=303)
     except Exception as e:
