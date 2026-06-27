@@ -70,9 +70,12 @@ class ScrapeQueueManager:
                 await asyncio.sleep(1)
                 continue
             
-            # Startet die Verarbeitung als eigenständigen Task, um Parallelität zu ermöglichen
-            asyncio.create_task(self._process_request(request))
-            self.queue.task_done()
+            try:
+                await self._process_request(request)
+            except Exception as e:
+                logger.error(f"Fehler bei der Verarbeitung in der Queue: {e}")
+            finally:
+                self.queue.task_done()
 
     async def _process_request(self, request: ScrapeRequest):
         request.attempts += 1
