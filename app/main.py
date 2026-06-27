@@ -56,12 +56,27 @@ def save_settings(settings: dict):
 
 def check_rapidapi_access(request: Request):
     settings = load_settings()
-    if not settings.get("sandbox_mode", True):
-        secret = settings.get("rapidapi_proxy_secret", "")
-        if secret:
-            request_secret = request.headers.get("x-rapidapi-proxy-secret")
-            if request_secret != secret:
-                raise HTTPException(status_code=403, detail="Ungueltiger RapidAPI-Proxy-Secret Header.")
+    sandbox_mode = settings.get("sandbox_mode", True)
+    secret = settings.get("rapidapi_proxy_secret", "")
+    
+    request_secret = request.headers.get("x-rapidapi-proxy-secret")
+    is_secret_valid = bool(secret and request_secret == secret)
+    
+    if sandbox_mode:
+        sub = request.headers.get("x-sandbox-subscription") or request.headers.get("x-rapidapi-subscription")
+        is_sub_valid = bool(sub and sub.capitalize() in ["Basic", "Pro", "Ultra"])
+        
+        if not (is_sub_valid or is_secret_valid):
+            raise HTTPException(
+                status_code=403,
+                detail="Zugriff verweigert. Im Sandbox-Modus ist eine gueltige Test-Subscription (Basic/Pro/Ultra) oder das Proxy-Secret erforderlich."
+            )
+    else:
+        if not is_secret_valid:
+            raise HTTPException(
+                status_code=403,
+                detail="Ungueltiger RapidAPI-Proxy-Secret Header."
+            )
 
 @app.on_event("startup")
 def startup_event():
