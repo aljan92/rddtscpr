@@ -27,3 +27,6 @@ app/data/storage_state.json
 # OS files
 .DS_Store
 Thumbs.db
+
+# Documentation
+rapidapi_docs.md
