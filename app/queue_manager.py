@@ -102,6 +102,11 @@ class ScrapeQueueManager:
                 db.commit()
                 request.future.set_result((result[0], result[1], account.username))
                 
+            except ValueError as val_error:
+                # Client-Fehler (z.B. Subreddit existiert nicht). Kein Failover/Sperren des Accounts!
+                logger.warning(f"Client-Fehler beim Scraping (z.B. 404/Private/Gesperrt): {val_error}")
+                request.future.set_exception(val_error)
+                return
             except Exception as scrape_error:
                 logger.warning(f"Fehler beim Scraping mit Haupt-Proxy für Account '{account.username}': {scrape_error}")
                 
@@ -114,6 +119,10 @@ class ScrapeQueueManager:
                         account.request_count = (account.request_count or 0) + 1
                         db.commit()
                         request.future.set_result((result[0], result[1], account.username))
+                        return
+                    except ValueError as val_error:
+                        logger.warning(f"Client-Fehler beim Scraping über Fallback-Proxy: {val_error}")
+                        request.future.set_exception(val_error)
                         return
                     except Exception as fallback_error:
                         logger.error(f"Fallback-Proxy für Account '{account.username}' ebenfalls fehlgeschlagen: {fallback_error}")

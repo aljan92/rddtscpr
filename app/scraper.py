@@ -25,17 +25,23 @@ def clean_url(url: str) -> str:
 
 def build_subreddit_url(target: str, sort: str, timeframe: str) -> str:
     """Konstruiert die Reddit-Subreddit-URL."""
-    # Bereinigung des targets
-    if "reddit.com" in target:
-        # Target ist bereits eine URL, base URL extrahieren und aufräumen
-        base_url = clean_url(target)
-        if not base_url.endswith("/"):
-            base_url += "/"
+    target_clean = target.strip()
+    
+    # Falls das Target eine komplette Reddit-URL ist oder mit r/ startet
+    if "reddit.com" in target_clean or "r/" in target_clean:
+        # Extrahiere Subreddit-Name (alles nach /r/ oder r/)
+        match = re.search(r"r/([^/?#]+)", target_clean)
+        if match:
+            subreddit_name = match.group(1)
+            base_url = f"https://www.reddit.com/r/{subreddit_name}/"
+        else:
+            base_url = clean_url(target_clean)
+            if not base_url.endswith("/"):
+                base_url += "/"
     else:
         # Target ist nur der Subreddit-Name
-        base_url = f"https://www.reddit.com/r/{target.strip('/')}/"
-    
-    # Sortierung anhängen
+        base_url = f"https://www.reddit.com/r/{target_clean.strip('/')}/"
+        
     url = f"{base_url}{sort}/"
     return url
 
@@ -101,7 +107,9 @@ async def scrape_subreddit_posts_json(target: str, sort: str, timeframe: str, li
     async with httpx.AsyncClient(headers=DEFAULT_HEADERS, cookies=cookies, proxies=proxies, timeout=15.0, follow_redirects=True) as client:
         response = await client.get(json_url, params=params)
         
-        if response.status_code != 200:
+        if response.status_code == 404:
+            raise ValueError("Subreddit oder Post existiert nicht (HTTP 404).")
+        elif response.status_code != 200:
             raise Exception(f"Reddit-API lieferte Status Code {response.status_code}")
             
         payload = response.json()
@@ -218,7 +226,9 @@ async def scrape_post_comments_json(post_url: str, sort: str, limit: int, includ
     async with httpx.AsyncClient(headers=DEFAULT_HEADERS, cookies=cookies, proxies=proxies, timeout=15.0, follow_redirects=True) as client:
         response = await client.get(json_url, params=params)
         
-        if response.status_code != 200:
+        if response.status_code == 404:
+            raise ValueError("Post existiert nicht (HTTP 404).")
+        elif response.status_code != 200:
             raise Exception(f"Reddit-API lieferte Status Code {response.status_code}")
             
         payload = response.json()
@@ -341,6 +351,14 @@ async def get_page_json(page) -> dict:
         # Wenn kein valides JSON da ist, Screenshot zur Diagnose machen
         os.makedirs("./app/data", exist_ok=True)
         await page.screenshot(path="./app/data/last_error.png")
+        
+        content_lower = content.lower()
+        # Spezifische Client-Fehler erkennen, die keinen Account-Failover auslösen sollten
+        if "forbidden" in content_lower or "privat" in content_lower or "gesperrt" in content_lower or "banned" in content_lower:
+            raise ValueError("Subreddit ist privat, gesperrt oder nicht zugänglich.")
+        if "page not found" in content_lower or "nicht gefunden" in content_lower or "404" in content_lower or "page_not_found" in content_lower:
+            raise ValueError("Subreddit oder Post existiert nicht (HTTP 404).")
+            
         # Teilauszug des Texts für die Fehlermeldung
         preview = content[:200].replace('\n', ' ')
         raise Exception(f"Ungültige JSON-Antwort von Reddit erhalten. Inhalt startet mit: '{preview}'")
