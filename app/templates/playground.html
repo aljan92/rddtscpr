@@ -302,14 +302,14 @@
                 const sort = document.getElementById('posts-sort').value;
                 const timeframe = document.getElementById('posts-timeframe').value;
                 const limit = document.getElementById('limit-input').value;
-                url = `/v1/subreddit-posts?target=${target}&sort=${sort}&timeframe=${timeframe}&limit=${limit}`;
+                url = `/v1/subreddit-posts?target=${target}&sort=${sort}&timeframe=${timeframe}&limit=${limit}&playground=true`;
             } else {
                 const postUrl = encodeURIComponent(document.getElementById('post-url-input').value);
                 const sort = document.getElementById('comments-sort').value;
                 const limit = document.getElementById('limit-input').value;
                 const includeReplies = document.getElementById('include-replies-checkbox').checked;
                 const loadMore = document.getElementById('load-more-checkbox').checked;
-                url = `/v1/post-comments?post_url=${postUrl}&sort=${sort}&limit=${limit}&include_replies=${includeReplies}&load_more=${loadMore}`;
+                url = `/v1/post-comments?post_url=${postUrl}&sort=${sort}&limit=${limit}&include_replies=${includeReplies}&load_more=${loadMore}&playground=true`;
             }
 
             const startTime = performance.now();

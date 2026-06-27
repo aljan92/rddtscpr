@@ -10,7 +10,7 @@ from app.scraper import get_subreddit_posts, get_post_comments
 logger = logging.getLogger("rddtscpr.queue")
 
 class ScrapeRequest:
-    def __init__(self, action: str, params: dict, future: asyncio.Future):
+    def __init__(self, action: str, params: dict, future: asyncio.Future, is_playground: bool = False):
         self.id = str(uuid.uuid4())
         self.action = action  # "subreddit" or "comments"
         self.params = params
@@ -20,6 +20,7 @@ class ScrapeRequest:
         self.status = "Wartend"  # "Wartend", "Cooldown", "Scraping"
         self.account_username = None
         self.created_at = datetime.utcnow()
+        self.is_playground = is_playground
 
 class ScrapeQueueManager:
     def __init__(self):
@@ -45,13 +46,13 @@ class ScrapeQueueManager:
                 pass
             logger.info("ScrapeQueueManager beendet.")
 
-    async def enqueue(self, action: str, params: dict) -> tuple[list, str, str]:
+    async def enqueue(self, action: str, params: dict, is_playground: bool = False) -> tuple[list, str, str]:
         """Reiht einen Request ein und wartet asynchron auf das Ergebnis."""
         if not self._running:
             self.start()
             
         future = asyncio.get_running_loop().create_future()
-        request = ScrapeRequest(action, params, future)
+        request = ScrapeRequest(action, params, future, is_playground)
         self.active_requests[request.id] = request
         await self.queue.put(request)
         try:
@@ -115,7 +116,8 @@ class ScrapeQueueManager:
                 
                 # Erfolg: Counter zurücksetzen, Request-Zähler erhöhen und Ergebnis zurückgeben
                 account.failure_count = 0
-                account.request_count = (account.request_count or 0) + 1
+                if not request.is_playground:
+                    account.request_count = (account.request_count or 0) + 1
                 db.commit()
                 request.future.set_result((result[0], result[1], account.username))
                 
@@ -134,7 +136,8 @@ class ScrapeQueueManager:
                         request.status = "Scraping"
                         result = await self._execute_scrape(request.action, request.params, session_state, account.fallback_proxy_url)
                         account.failure_count = 0
-                        account.request_count = (account.request_count or 0) + 1
+                        if not request.is_playground:
+                            account.request_count = (account.request_count or 0) + 1
                         db.commit()
                         request.future.set_result((result[0], result[1], account.username))
                         return

@@ -54,7 +54,28 @@ def save_settings(settings: dict):
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f, indent=2)
 
+def is_admin_request(request: Request) -> bool:
+    auth_header = request.headers.get("Authorization") or request.headers.get("authorization")
+    if not auth_header:
+        return False
+    try:
+        import base64
+        auth_type, credentials = auth_header.split(" ", 1)
+        if auth_type.lower() != "basic":
+            return False
+        decoded = base64.b64decode(credentials).decode("utf-8")
+        username, password = decoded.split(":", 1)
+        admin_user = os.getenv("ADMIN_USERNAME", "admin")
+        admin_pass = os.getenv("ADMIN_PASSWORD", "admin123")
+        return username == admin_user and password == admin_pass
+    except Exception:
+        return False
+
 def check_rapidapi_access(request: Request):
+    # Bypass verification for local playground requests made by admin
+    if request.query_params.get("playground") == "true" and is_admin_request(request):
+        return
+
     settings = load_settings()
     sandbox_mode = settings.get("sandbox_mode", True)
     secret = settings.get("rapidapi_proxy_secret", "")
@@ -126,6 +147,7 @@ async def api_subreddit_posts(
     if limit < 1 or limit > 100:
         raise HTTPException(status_code=400, detail="Limit must be between 1 and 100.")
 
+    is_playground = request.query_params.get("playground") == "true" and is_admin_request(request)
     start_time = time.time()
     method_used = "json"
     proxy_used = "Dynamisch"
@@ -138,23 +160,25 @@ async def api_subreddit_posts(
                 "sort": sort,
                 "timeframe": timeframe,
                 "limit": limit
-            }
+            },
+            is_playground=is_playground
         )
         
         duration = int((time.time() - start_time) * 1000)
         
         # In DB loggen
-        log_entry = APIRequestLog(
-            endpoint="/v1/subreddit-posts",
-            target=target,
-            status_code=200,
-            response_time_ms=duration,
-            method_used=method_used,
-            proxy_used=proxy_used,
-            reddit_username=username_used
-        )
-        db.add(log_entry)
-        db.commit()
+        if not is_playground:
+            log_entry = APIRequestLog(
+                endpoint="/v1/subreddit-posts",
+                target=target,
+                status_code=200,
+                response_time_ms=duration,
+                method_used=method_used,
+                proxy_used=proxy_used,
+                reddit_username=username_used
+            )
+            db.add(log_entry)
+            db.commit()
         
         scraped_url = build_subreddit_url(target, sort, timeframe)
         if sort == "top" and timeframe:
@@ -176,17 +200,18 @@ async def api_subreddit_posts(
         error_msg = str(e)
         logger.error(f"Fehler bei Subreddit-Scraping ({target}): {error_msg}")
         
-        log_entry = APIRequestLog(
-            endpoint="/v1/subreddit-posts",
-            target=target,
-            status_code=500,
-            response_time_ms=duration,
-            method_used=method_used,
-            proxy_used=proxy_used,
-            error_message=error_msg
-        )
-        db.add(log_entry)
-        db.commit()
+        if not is_playground:
+            log_entry = APIRequestLog(
+                endpoint="/v1/subreddit-posts",
+                target=target,
+                status_code=500,
+                response_time_ms=duration,
+                method_used=method_used,
+                proxy_used=proxy_used,
+                error_message=error_msg
+            )
+            db.add(log_entry)
+            db.commit()
         
         raise HTTPException(
             status_code=500,
@@ -230,6 +255,7 @@ async def api_post_comments(
     if not post_url.startswith("http"):
         raise HTTPException(status_code=400, detail="Invalid post URL. URL must start with http/https.")
 
+    is_playground = request.query_params.get("playground") == "true" and is_admin_request(request)
     start_time = time.time()
     method_used = "json"
     proxy_used = "Dynamisch"
@@ -243,22 +269,24 @@ async def api_post_comments(
                 "limit": limit,
                 "include_replies": include_replies,
                 "load_more": load_more
-            }
+            },
+            is_playground=is_playground
         )
         
         duration = int((time.time() - start_time) * 1000)
         
-        log_entry = APIRequestLog(
-            endpoint="/v1/post-comments",
-            target=post_url,
-            status_code=200,
-            response_time_ms=duration,
-            method_used=method_used,
-            proxy_used=proxy_used,
-            reddit_username=username_used
-        )
-        db.add(log_entry)
-        db.commit()
+        if not is_playground:
+            log_entry = APIRequestLog(
+                endpoint="/v1/post-comments",
+                target=post_url,
+                status_code=200,
+                response_time_ms=duration,
+                method_used=method_used,
+                proxy_used=proxy_used,
+                reddit_username=username_used
+            )
+            db.add(log_entry)
+            db.commit()
         
         return {
             "meta": {
@@ -277,17 +305,18 @@ async def api_post_comments(
         error_msg = str(e)
         logger.error(f"Fehler bei Kommentar-Scraping: {error_msg}")
         
-        log_entry = APIRequestLog(
-            endpoint="/v1/post-comments",
-            target=post_url,
-            status_code=500,
-            response_time_ms=duration,
-            method_used=method_used,
-            proxy_used=proxy_used,
-            error_message=error_msg
-        )
-        db.add(log_entry)
-        db.commit()
+        if not is_playground:
+            log_entry = APIRequestLog(
+                endpoint="/v1/post-comments",
+                target=post_url,
+                status_code=500,
+                response_time_ms=duration,
+                method_used=method_used,
+                proxy_used=proxy_used,
+                error_message=error_msg
+            )
+            db.add(log_entry)
+            db.commit()
         
         raise HTTPException(
             status_code=500,
@@ -558,6 +587,19 @@ async def admin_settings_post(
     save_settings(settings)
     logger.info(f"System-Settings aktualisiert: Sandbox Mode = {sandbox_mode}")
     return RedirectResponse(url="/admin/settings?success=Einstellungen+erfolgreich+gespeichert!", status_code=303)
+
+@app.post("/admin/settings/reset-stats")
+async def admin_settings_reset_stats(
+    username: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    db.query(APIRequestLog).delete()
+    accounts = db.query(RedditAccount).all()
+    for acc in accounts:
+        acc.request_count = 0
+    db.commit()
+    logger.info("Statistiken (Logs & Request-Counts) über Admin-Settings zurückgesetzt.")
+    return RedirectResponse(url="/admin/settings?success=Statistiken+erfolgreich+zurueckgesetzt!", status_code=303)
 
 @app.get("/admin/logs/clear")
 async def admin_clear_logs(

@@ -193,6 +193,30 @@
             </form>
         </div>
 
+        <!-- Reset Statistics Card -->
+        <div class="glass-card p-8 rounded-2xl space-y-6">
+            <div class="flex items-center space-x-3 border-b border-reddit-border pb-4">
+                <div class="bg-rose-500/10 p-2 rounded-lg text-rose-500">
+                    <i data-lucide="trash-2" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h2 class="text-lg font-semibold text-white">Daten & Statistiken zurücksetzen</h2>
+                    <p class="text-xs text-slate-400">Setze alle Scrape-Zähler und Request-Logs zurück, bevor du live gehst</p>
+                </div>
+            </div>
+            
+            <p class="text-xs text-slate-400 leading-relaxed">
+                Diese Aktion löscht unwiderruflich alle protokollierten API-Anfragen aus der Datenbank und setzt den individuellen Request-Zähler (<code class="text-slate-300 font-mono">request_count</code>) aller Reddit-Accounts auf 0 zurück. Dies ist ideal, um vor dem offiziellen Launch auf RapidAPI eine saubere Datenbasis herzustellen.
+            </p>
+
+            <form action="/admin/settings/reset-stats" method="POST" onsubmit="return confirm('Möchtest du wirklich alle API-Statistiken und Request-Zähler der Accounts zurücksetzen? Dies kann nicht rückgängig gemacht werden.');">
+                <button type="submit" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-medium py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center space-x-2 shadow-lg shadow-rose-600/15">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    <span>Statistiken zurücksetzen</span>
+                </button>
+            </form>
+        </div>
+
         <!-- Explanations Card -->
         <div class="glass-card p-6 rounded-2xl space-y-4">
             <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-400">📖 Dokumentation & Funktionsweise</h3>
