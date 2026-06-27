@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -17,6 +17,21 @@ else:
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+class RedditAccount(Base):
+    __tablename__ = "reddit_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(100), unique=True, nullable=False)
+    password = Column(String(255), nullable=False)
+    proxy_url = Column(String(255), nullable=True)
+    fallback_proxy_url = Column(String(255), nullable=True)
+    session_state = Column(Text, nullable=True)  # JSON Cookie State
+    is_active = Column(Boolean, default=True)
+    failure_count = Column(Integer, default=0)
+    last_used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 
 class APIRequestLog(Base):
     __tablename__ = "api_request_logs"

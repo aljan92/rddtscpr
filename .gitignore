@@ -13,7 +13,7 @@ env.bak/
 venv.bak/
 
 # Project specific
-app/data/storage_state.json
+app/data/
 
 # IDEs
 .idea/

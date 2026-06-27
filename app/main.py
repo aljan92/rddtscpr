@@ -7,9 +7,10 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from app.database import init_db, get_db, APIRequestLog
-from app.auth import get_session_info, login_to_reddit, STATE_FILE_PATH
-from app.scraper import get_subreddit_posts, get_post_comments, build_subreddit_url, clean_url
+from app.database import init_db, get_db, APIRequestLog, RedditAccount
+from app.auth import get_session_info_from_state, login_to_reddit
+from app.scraper import build_subreddit_url, clean_url
+from app.queue_manager import scrape_queue
 
 # Logging einrichten
 logging.basicConfig(level=logging.INFO)
@@ -18,7 +19,6 @@ logger = logging.getLogger("rddtscpr")
 app = FastAPI(title="Reddit Data Extraction API", version="1.0.0")
 
 # Vorbereitung für Templates
-# Wir erstellen den templates Ordner, falls er nicht existiert
 os.makedirs("./app/templates", exist_ok=True)
 templates = Jinja2Templates(directory="app/templates")
 
@@ -41,10 +41,17 @@ def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
 def startup_event():
     # DB Tabellen initialisieren
     init_db()
-    logger.info("Datenbank initialisiert.")
+    # Queue Manager starten
+    scrape_queue.start()
+    logger.info("Datenbank initialisiert und Scrape-Queue gestartet.")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await scrape_queue.stop()
+    logger.info("Scrape-Queue gestoppt.")
 
 # =====================================================================
-# PUBLIC API ENDPOINTS
+# PUBLIC API ENDPOINTS (Routet über Queue)
 # =====================================================================
 
 @app.get("/v1/subreddit-posts")
@@ -66,16 +73,18 @@ async def api_subreddit_posts(
         raise HTTPException(status_code=400, detail="Limit muss zwischen 1 und 100 liegen.")
 
     start_time = time.time()
-    proxy = os.getenv("PROXY_URL")
     method_used = "json"
+    proxy_used = "Dynamisch"
     
     try:
-        posts, method_used = await get_subreddit_posts(
-            target=target,
-            sort=sort,
-            timeframe=timeframe,
-            limit=limit,
-            proxy=proxy
+        posts, method_used = await scrape_queue.enqueue(
+            action="subreddit",
+            params={
+                "target": target,
+                "sort": sort,
+                "timeframe": timeframe,
+                "limit": limit
+            }
         )
         
         duration = int((time.time() - start_time) * 1000)
@@ -87,7 +96,7 @@ async def api_subreddit_posts(
             status_code=200,
             response_time_ms=duration,
             method_used=method_used,
-            proxy_used=proxy or "Kein Proxy"
+            proxy_used=proxy_used
         )
         db.add(log_entry)
         db.commit()
@@ -118,7 +127,7 @@ async def api_subreddit_posts(
             status_code=500,
             response_time_ms=duration,
             method_used=method_used,
-            proxy_used=proxy or "Kein Proxy",
+            proxy_used=proxy_used,
             error_message=error_msg
         )
         db.add(log_entry)
@@ -149,17 +158,19 @@ async def api_post_comments(
         raise HTTPException(status_code=400, detail="Ungültige Post-URL. URL muss mit http/https beginnen.")
 
     start_time = time.time()
-    proxy = os.getenv("PROXY_URL")
     method_used = "json"
+    proxy_used = "Dynamisch"
     
     try:
-        comments, method_used = await get_post_comments(
-            post_url=post_url,
-            sort=sort,
-            limit=limit,
-            include_replies=include_replies,
-            load_more=load_more,
-            proxy=proxy
+        comments, method_used = await scrape_queue.enqueue(
+            action="comments",
+            params={
+                "post_url": post_url,
+                "sort": sort,
+                "limit": limit,
+                "include_replies": include_replies,
+                "load_more": load_more
+            }
         )
         
         duration = int((time.time() - start_time) * 1000)
@@ -170,7 +181,7 @@ async def api_post_comments(
             status_code=200,
             response_time_ms=duration,
             method_used=method_used,
-            proxy_used=proxy or "Kein Proxy"
+            proxy_used=proxy_used
         )
         db.add(log_entry)
         db.commit()
@@ -198,7 +209,7 @@ async def api_post_comments(
             status_code=500,
             response_time_ms=duration,
             method_used=method_used,
-            proxy_used=proxy or "Kein Proxy",
+            proxy_used=proxy_used,
             error_message=error_msg
         )
         db.add(log_entry)
@@ -210,7 +221,7 @@ async def api_post_comments(
         )
 
 # =====================================================================
-# ADMIN PANEL ENDPOINTS (Basic Auth Protected)
+# ADMIN PANEL ENDPOINTS & CRUD (Basic Auth Protected)
 # =====================================================================
 
 @app.get("/admin/dashboard", response_class=HTMLResponse)
@@ -236,12 +247,27 @@ async def admin_dashboard(
         durations = [log.response_time_ms for log in avg_duration.all()]
         avg_duration_ms = int(sum(durations) / len(durations))
         
-    # Verteilung der Scraping-Methoden
     json_count = db.query(APIRequestLog).filter(APIRequestLog.method_used == "json").count()
     playwright_count = db.query(APIRequestLog).filter(APIRequestLog.method_used == "playwright").count()
     
-    # Session info holen
-    session_info = get_session_info()
+    # Accounts aus DB laden
+    db_accounts = db.query(RedditAccount).all()
+    accounts_info = []
+    
+    for acc in db_accounts:
+        session_info = get_session_info_from_state(acc.session_state)
+        accounts_info.append({
+            "id": acc.id,
+            "username": acc.username,
+            "proxy_url": acc.proxy_url or "Kein Proxy",
+            "fallback_proxy_url": acc.fallback_proxy_url or "Kein Proxy",
+            "is_active": acc.is_active,
+            "failure_count": acc.failure_count,
+            "last_used_at": acc.last_used_at.isoformat() if acc.last_used_at else "Nie",
+            "session_active": session_info["active"],
+            "session_message": session_info["message"],
+            "session_expires": session_info.get("expires", "-")
+        })
     
     stats = {
         "total": total_requests,
@@ -259,33 +285,88 @@ async def admin_dashboard(
             "request": request, 
             "stats": stats, 
             "logs": logs, 
-            "session_info": session_info,
-            "reddit_username": os.getenv("REDDIT_USERNAME")
+            "accounts": accounts_info
         }
     )
 
-@app.post("/admin/login-reddit")
-async def admin_login_reddit(
-    username: str = Depends(verify_admin)
+@app.post("/admin/accounts/add")
+async def admin_add_account(
+    username: str = Form(...),
+    password: str = Form(...),
+    proxy_url: str = Form(None),
+    fallback_proxy_url: str = Form(None),
+    admin_user: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
 ):
-    reddit_user = os.getenv("REDDIT_USERNAME")
-    reddit_pass = os.getenv("REDDIT_PASSWORD")
-    proxy = os.getenv("PROXY_URL")
-    
-    if not reddit_user or not reddit_pass:
-        return RedirectResponse(
-            url="/admin/dashboard?error=Username+oder+Passwort+nicht+konfiguriert+in+.env",
-            status_code=303
+    try:
+        new_acc = RedditAccount(
+            username=username.strip(),
+            password=password.strip(),
+            proxy_url=proxy_url.strip() if proxy_url else None,
+            fallback_proxy_url=fallback_proxy_url.strip() if fallback_proxy_url else None
         )
+        db.add(new_acc)
+        db.commit()
+        return RedirectResponse(url="/admin/dashboard?success=Reddit-Account+erfolgreich+hinzugefuegt!", status_code=303)
+    except Exception as e:
+        db.rollback()
+        return RedirectResponse(url=f"/admin/dashboard?error=Fehler+beim+Hinzufuegen:+{str(e)}", status_code=303)
+
+@app.post("/admin/accounts/{account_id}/delete")
+async def admin_delete_account(
+    account_id: int,
+    admin_user: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    acc = db.query(RedditAccount).filter(RedditAccount.id == account_id).first()
+    if acc:
+        db.delete(acc)
+        db.commit()
+        return RedirectResponse(url="/admin/dashboard?success=Account+geloescht", status_code=303)
+    return RedirectResponse(url="/admin/dashboard?error=Account+nicht+gefunden", status_code=303)
+
+@app.post("/admin/accounts/{account_id}/toggle")
+async def admin_toggle_account(
+    account_id: int,
+    admin_user: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    acc = db.query(RedditAccount).filter(RedditAccount.id == account_id).first()
+    if acc:
+        acc.is_active = not acc.is_active
+        db.commit()
+        return RedirectResponse(url="/admin/dashboard?success=Account-Status+geaendert", status_code=303)
+    return RedirectResponse(url="/admin/dashboard?error=Account+nicht+gefunden", status_code=303)
+
+@app.post("/admin/accounts/{account_id}/refresh")
+async def admin_refresh_session(
+    account_id: int,
+    admin_user: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    acc = db.query(RedditAccount).filter(RedditAccount.id == account_id).first()
+    if not acc:
+        return RedirectResponse(url="/admin/dashboard?error=Account+nicht+gefunden", status_code=303)
         
     try:
-        success = await login_to_reddit(reddit_user, reddit_pass, proxy)
-        if success:
-            return RedirectResponse(url="/admin/dashboard?success=Reddit-Login+erfolgreich+durchgefuehrt!", status_code=303)
-        else:
-            return RedirectResponse(url="/admin/dashboard?error=Reddit-Login+fehlgeschlagen.", status_code=303)
+        logger.info(f"Führe manuellen Login-Refresh für Account '{acc.username}' durch...")
+        # Login über Playwright mit Proxy durchführen
+        session_state_json = await login_to_reddit(
+            username=acc.username,
+            password=acc.password,
+            proxy_url=acc.proxy_url
+        )
+        
+        # State in der DB speichern
+        acc.session_state = session_state_json
+        acc.failure_count = 0
+        acc.is_active = True
+        db.commit()
+        
+        return RedirectResponse(url=f"/admin/dashboard?success=Session+fuer+Konto+{acc.username}+erfolgreich+erneuert!", status_code=303)
     except Exception as e:
-        return RedirectResponse(url=f"/admin/dashboard?error=Login-Fehler:+{str(e)}", status_code=303)
+        logger.error(f"Fehler bei Session-Refresh für {acc.username}: {e}")
+        return RedirectResponse(url=f"/admin/dashboard?error=Refresh-Fehler+fuer+{acc.username}:+{str(e)}", status_code=303)
 
 @app.get("/admin/playground", response_class=HTMLResponse)
 async def admin_playground(
@@ -311,4 +392,5 @@ async def admin_debug_screenshot(
     if os.path.exists(screenshot_path):
         return FileResponse(screenshot_path)
     raise HTTPException(status_code=404, detail="Kein Fehler-Screenshot vorhanden.")
+
 

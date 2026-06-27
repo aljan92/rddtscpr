@@ -70,51 +70,117 @@
     <main class="flex-grow p-6 max-w-7xl mx-auto w-full space-y-6">
         <!-- Status Messages -->
         <div id="alert-container"></div>
-
         <!-- Session & Control Section -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <!-- Reddit Session Status -->
-            <div class="glass-card p-6 rounded-2xl flex flex-col justify-between lg:col-span-2">
+            <!-- Reddit Accounts List (Left col, span 2) -->
+            <div class="glass-card p-6 rounded-2xl flex flex-col justify-between lg:col-span-2 space-y-6">
                 <div>
-                    <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-lg font-semibold text-white flex items-center space-x-2">
-                            <i data-lucide="key" class="text-reddit-orange w-5 h-5"></i>
-                            <span>Reddit Login-Session</span>
-                        </h2>
-                        {% if session_info.active %}
-                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                <span class="w-2 h-2 rounded-full bg-emerald-400 mr-2 animate-ping"></span>
-                                Aktiv
-                            </span>
-                        {% else %}
-                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                                Inaktiv
-                            </span>
-                        {% endif %}
-                    </div>
+                    <h2 class="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
+                        <i data-lucide="users" class="text-reddit-orange w-5 h-5"></i>
+                        <span>Reddit-Accounts & Sessions</span>
+                    </h2>
                     
-                    <div class="space-y-3 mb-6">
-                        <div class="flex justify-between border-b border-reddit-border/50 pb-2 text-sm">
-                            <span class="text-slate-400">Hinterlegter Benutzer:</span>
-                            <span class="font-medium text-white">{{ reddit_username or 'Nicht konfiguriert' }}</span>
-                        </div>
-                        <div class="flex justify-between border-b border-reddit-border/50 pb-2 text-sm">
-                            <span class="text-slate-400">Letztes Session-Update:</span>
-                            <span class="font-medium text-white" id="session-update-time">{{ session_info.last_update or 'N/A' }}</span>
-                        </div>
-                        <div class="text-sm">
-                            <span class="text-slate-400">Details:</span>
-                            <p class="mt-1 font-mono text-xs text-slate-300 bg-slate-900/50 p-2.5 rounded-lg border border-reddit-border/30">{{ session_info.message }}</p>
-                        </div>
+                    <div class="overflow-x-auto border border-reddit-border/50 rounded-xl bg-reddit-dark/30">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-reddit-dark/60 border-b border-reddit-border text-slate-400 text-xs font-semibold uppercase">
+                                    <th class="p-3">Benutzername</th>
+                                    <th class="p-3">Proxy</th>
+                                    <th class="p-3 text-center">Session</th>
+                                    <th class="p-3 text-center">Status</th>
+                                    <th class="p-3 text-right">Aktionen</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-reddit-border/30 text-sm">
+                                {% for acc in accounts %}
+                                <tr class="hover:bg-slate-800/10 transition-all duration-150">
+                                    <td class="p-3 font-semibold text-white">
+                                        {{ acc.username }}
+                                        {% if acc.failure_count > 0 %}
+                                            <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20" title="Fehlgeschlagene Versuche">
+                                                {{ acc.failure_count }} F
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="p-3 text-slate-400 font-mono text-xs max-w-[180px] truncate" title="Fallback: {{ acc.fallback_proxy_url }}">
+                                        {{ acc.proxy_url }}
+                                    </td>
+                                    <td class="p-3 text-center">
+                                        {% if acc.session_active %}
+                                            <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="Gültig bis: {{ acc.session_expires }}">
+                                                Aktiv
+                                            </span>
+                                        {% else %}
+                                            <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20" title="{{ acc.session_message }}">
+                                                Inaktiv
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="p-3 text-center">
+                                        <form action="/admin/accounts/{{ acc.id }}/toggle" method="POST" class="inline">
+                                            <button type="submit" class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-semibold transition-all duration-200 cursor-pointer {{ 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20' if acc.is_active else 'bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20' }}">
+                                                {{ 'Aktiv' if acc.is_active else 'Deaktiviert' }}
+                                            </button>
+                                        </form>
+                                    </td>
+                                    <td class="p-3 text-right space-x-2">
+                                        <form action="/admin/accounts/{{ acc.id }}/refresh" method="POST" class="inline refresh-form">
+                                            <button type="submit" class="refresh-btn p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-blue-400 hover:text-blue-300 transition-all duration-200" title="Session erneuern (Playwright Login)">
+                                                <i data-lucide="refresh-cw" class="w-4 h-4 refresh-icon"></i>
+                                            </button>
+                                        </form>
+                                        <form action="/admin/accounts/{{ acc.id }}/delete" method="POST" class="inline" onsubmit="return confirm('Möchtest du dieses Konto wirklich löschen?')">
+                                            <button type="submit" class="p-1.5 rounded-lg border border-rose-500/20 hover:bg-rose-500/10 text-rose-400 hover:text-rose-300 transition-all duration-200" title="Konto löschen">
+                                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="5" class="p-6 text-center text-slate-500">
+                                        Keine Accounts hinterlegt. Bitte erstelle unten ein Konto.
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
 
-                <form action="/admin/login-reddit" method="POST" id="login-form">
-                    <button type="submit" id="login-btn" class="w-full flex items-center justify-center space-x-2 bg-reddit-orange hover:bg-reddit-orange/90 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-300 shadow-lg shadow-reddit-orange/20 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50">
-                        <i data-lucide="refresh-cw" id="login-icon" class="w-5 h-5"></i>
-                        <span id="login-text">Reddit-Session jetzt erneuern (Playwright Login)</span>
-                    </button>
-                </form>
+                <!-- Add Account Form -->
+                <div class="border-t border-reddit-border/50 pt-6">
+                    <h3 class="text-sm font-semibold text-white mb-4 flex items-center space-x-2">
+                        <i data-lucide="user-plus" class="text-blue-400 w-4 h-4"></i>
+                        <span>Neues Reddit-Konto hinzufügen</span>
+                    </h3>
+                    
+                    <form action="/admin/accounts/add" method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-xs text-slate-400 font-semibold">Reddit Username</label>
+                            <input type="text" name="username" required placeholder="Reddit Username" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-xs text-slate-400 font-semibold">Reddit Passwort</label>
+                            <input type="password" name="password" required placeholder="Reddit Passwort" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-xs text-slate-400 font-semibold">Haupt-Proxy (optional)</label>
+                            <input type="text" name="proxy_url" placeholder="http://user:pass@host:port" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-xs text-slate-400 font-semibold">Fallback-Proxy (optional)</label>
+                            <input type="text" name="fallback_proxy_url" placeholder="http://user:pass@host:port" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                        </div>
+                        
+                        <div class="md:col-span-2 pt-2">
+                            <button type="submit" class="w-full flex items-center justify-center space-x-2 bg-reddit-orange hover:bg-reddit-orange/90 text-white font-semibold py-2.5 px-4 rounded-xl transition-all duration-300 hover:scale-[1.005] active:scale-[0.995]">
+                                <i data-lucide="plus" class="w-4 h-4"></i>
+                                <span>Konto registrieren</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
 
             <!-- Stats Mini Card -->
@@ -159,7 +225,7 @@
                 </h2>
                 <a href="/admin/debug-screenshot" target="_blank" class="text-xs text-blue-400 hover:underline">In neuem Tab öffnen</a>
             </div>
-            <p class="text-xs text-slate-400 mb-4">Dieser Screenshot zeigt den Zustand von Reddit, als das unauthentifizierte Scraping fehlschlug (z.B. Cookie Banner oder Login-Wall).</p>
+            <p class="text-xs text-slate-400 mb-4">Dieser Screenshot zeigt den Zustand von Reddit, als das unauthentifizierte Scraping fehlschlug.</p>
             <div class="border border-reddit-border rounded-xl overflow-hidden bg-reddit-dark flex justify-center">
                 <img id="debug-img" src="/admin/debug-screenshot" alt="Letzter Playwright Screenshot" class="max-w-full h-auto max-h-[450px] object-contain">
             </div>
@@ -272,42 +338,26 @@
         }
         lucide.createIcons();
 
-        // Lade-Animation für Login
-        const loginForm = document.getElementById('login-form');
-        const loginBtn = document.getElementById('login-btn');
-        const loginIcon = document.getElementById('login-icon');
-        const loginText = document.getElementById('login-text');
-
-        if (loginForm) {
-            loginForm.addEventListener('submit', function() {
-                loginBtn.disabled = true;
-                loginIcon.classList.add('animate-spin');
-                loginText.innerText = "Logge bei Reddit ein (dauert ca. 10-15s)...";
+        // Lade-Animation für Refresh
+        document.querySelectorAll('.refresh-form').forEach(form => {
+            form.addEventListener('submit', function() {
+                const btn = form.querySelector('.refresh-btn');
+                const icon = form.querySelector('.refresh-icon');
+                btn.disabled = true;
+                icon.classList.add('animate-spin');
             });
-        }
+        });
 
-        // Formatierung des Datums
-        const sessionTimeElem = document.getElementById('session-update-time');
-        if (sessionTimeElem && sessionTimeElem.innerText !== 'N/A') {
-            try {
-                const date = new Date(sessionTimeElem.innerText);
-                sessionTimeElem.innerText = date.toLocaleString('de-DE');
-            } catch (e) {
-                // Bei Fehler originalen String belassen
-            }
         // Debug Screenshot check
         const debugImg = document.getElementById('debug-img');
         const screenshotCard = document.getElementById('screenshot-card');
         if (debugImg) {
-            // Falls das Bild geladen werden kann, zeigen wir die Karte
             debugImg.onload = function() {
                 screenshotCard.classList.remove('hidden');
             };
-            // Falls das Bild 404 wirft (nicht vorhanden), verstecken wir die Karte
             debugImg.onerror = function() {
                 screenshotCard.classList.add('hidden');
             };
-            // Cache-Buster hinzufügen, um neuere Screenshots verlässlich anzuzeigen
             debugImg.src = "/admin/debug-screenshot?t=" + new Date().getTime();
         }
     </script>

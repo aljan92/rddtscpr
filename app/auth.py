@@ -1,4 +1,3 @@
-import os
 import json
 import logging
 from datetime import datetime
@@ -6,57 +5,49 @@ from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
 
 logger = logging.getLogger("rddtscpr.auth")
-STATE_FILE_PATH = os.getenv("STATE_FILE_PATH", "./app/data/storage_state.json")
 
-def get_session_info():
+def get_session_info_from_state(session_state_str: str) -> dict:
     """
-    Gibt Informationen über die aktuell gespeicherte Session zurück.
+    Gibt Informationen über den in der DB gespeicherten Session-State zurück.
     """
-    if not os.path.exists(STATE_FILE_PATH):
-        return {"active": False, "message": "Keine Session-Datei vorhanden."}
+    if not session_state_str:
+        return {"active": False, "message": "Keine Session aktiv."}
     
     try:
-        # Prüfen, wann die Datei zuletzt geändert wurde
-        mtime = os.path.getmtime(STATE_FILE_PATH)
-        last_update = datetime.fromtimestamp(mtime)
-        
-        with open(STATE_FILE_PATH, "r") as f:
-            state = json.load(f)
-            
+        state = json.loads(session_state_str)
         cookies = state.get("cookies", [])
         reddit_session_cookie = next((c for c in cookies if c["name"] == "reddit_session"), None)
         
         if reddit_session_cookie:
+            expires = reddit_session_cookie.get("expires", "Unbekannt")
+            # Falls expires ein UNIX-Timestamp ist, lesbar machen
+            if isinstance(expires, (int, float)):
+                expires = datetime.fromtimestamp(expires).isoformat()
+                
             return {
                 "active": True,
-                "last_update": last_update.isoformat(),
-                "expires": reddit_session_cookie.get("expires", "Unbekannt"),
+                "expires": expires,
                 "message": "Session ist aktiv (reddit_session Cookie vorhanden)."
             }
         else:
             return {
-                "active": True,
-                "last_update": last_update.isoformat(),
-                "message": "Session-Datei vorhanden, aber kein reddit_session Cookie gefunden."
+                "active": False,
+                "message": "Kein reddit_session Cookie im State gefunden."
             }
     except Exception as e:
         return {"active": False, "message": f"Fehler beim Lesen der Session: {str(e)}"}
 
-def get_stored_cookies():
+def get_account_cookies(session_state_str: str) -> dict:
     """
-    Liest die Cookies aus der storage_state.json aus und konvertiert sie in ein
-    Format, das direkt von httpx verwendet werden kann.
+    Konvertiert den JSON-Session-State aus der DB in ein httpx-kompatibles Cookie-Format.
     """
-    if not os.path.exists(STATE_FILE_PATH):
+    if not session_state_str:
         return {}
     
     try:
-        with open(STATE_FILE_PATH, "r") as f:
-            state = json.load(f)
-        
+        state = json.loads(session_state_str)
         cookies_dict = {}
         for cookie in state.get("cookies", []):
-            # Nur Cookies für reddit.com verwenden
             if "reddit.com" in cookie["domain"]:
                 cookies_dict[cookie["name"]] = cookie["value"]
         return cookies_dict
@@ -64,19 +55,15 @@ def get_stored_cookies():
         logger.error(f"Fehler beim Laden der gespeicherten Cookies: {e}")
         return {}
 
-async def login_to_reddit(username, password, proxy_url=None):
+async def login_to_reddit(username, password, proxy_url=None) -> str:
     """
-    Startet Playwright, loggt sich bei Reddit ein und speichert den State.
+    Startet Playwright, loggt sich bei Reddit ein und gibt den Session-State als JSON-String zurück.
     """
     if not username or not password:
         raise ValueError("Benutzername und Passwort müssen konfiguriert sein.")
     
-    os.makedirs(os.path.dirname(STATE_FILE_PATH), exist_ok=True)
-    
     playwright_proxy = None
     if proxy_url:
-        # Konvertiere Proxy-URL in Playwright Proxy-Format
-        # Format: http://user:pass@host:port -> server, username, password
         from urllib.parse import urlparse
         parsed = urlparse(proxy_url)
         playwright_proxy = {
@@ -99,7 +86,6 @@ async def login_to_reddit(username, password, proxy_url=None):
             args=browser_args
         )
         
-        # Erstelle neuen Kontext mit typischen Desktop-Werten
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             viewport={"width": 1280, "height": 800},
@@ -169,7 +155,6 @@ async def login_to_reddit(username, password, proxy_url=None):
                     continue
             
             if not username_filled:
-                # Fallback: Versuche über placeholder zu gehen
                 await page.fill("input[placeholder*='Username']", username)
                 
             password_filled = False
@@ -189,7 +174,6 @@ async def login_to_reddit(username, password, proxy_url=None):
             submit_clicked = False
             for selector in ["button[type='submit']", "button:has-text('Log In')", "button:has-text('Anmelden')"]:
                 try:
-                    # Direkter Klickversuch mit force=True, um Overlays zu ignorieren
                     await page.click(selector, force=True, timeout=2000)
                     submit_clicked = True
                     logger.info(f"Submit-Button geklickt via: {selector}")
@@ -198,31 +182,30 @@ async def login_to_reddit(username, password, proxy_url=None):
                     continue
             
             if not submit_clicked:
-                # Fallback: Enter auf Passwortfeld drücken
                 logger.info("Submit-Button nicht direkt klickbar, drücke Enter im Passwortfeld...")
                 await page.press("input[name='password']", "Enter")
             
             logger.info("Login-Daten abgeschickt. Warte auf Navigation...")
-            # Etwas länger warten, damit der Server auf dem NAS die Session verarbeiten kann
             await page.wait_for_timeout(8000)
             
-            # Überprüfen, ob wir eingeloggt sind (z.B. Cookie vorhanden oder Umleitung erfolgt)
+            # Überprüfen, ob wir eingeloggt sind
             cookies = await context.cookies()
             reddit_session = any(c["name"] == "reddit_session" for c in cookies)
             
             if reddit_session:
-                logger.info("Login erfolgreich! Speichere storage state...")
-                await context.storage_state(path=STATE_FILE_PATH)
-                return True
+                logger.info("Login erfolgreich! Extrahiere storage state...")
+                state = await context.storage_state()
+                return json.dumps(state)
             else:
-                # Falls wir nicht direkt das Cookie sehen, prüfen wir ob wir umgeleitet wurden
                 current_url = page.url
                 if "login" not in current_url:
-                    logger.info("URL hat sich geändert, vermute erfolgreichen Login. Speichere state...")
-                    await context.storage_state(path=STATE_FILE_PATH)
-                    return True
+                    logger.info("URL hat sich geändert, vermute erfolgreichen Login. Extrahiere state...")
+                    state = await context.storage_state()
+                    return json.dumps(state)
                 
                 # Screenshot für Debugging-Zwecke speichern
+                import os
+                os.makedirs("./app/data", exist_ok=True)
                 debug_screenshot_path = "./app/data/last_error.png"
                 await page.screenshot(path=debug_screenshot_path)
                 logger.error(f"Login fehlgeschlagen. Screenshot unter {debug_screenshot_path} gespeichert.")
