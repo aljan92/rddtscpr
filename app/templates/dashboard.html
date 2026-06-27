@@ -123,7 +123,15 @@
                                             </button>
                                         </form>
                                     </td>
-                                    <td class="p-3 text-right space-x-2">
+                                    <td class="p-3 text-right space-x-1.5 flex items-center justify-end">
+                                        {% if acc.has_screenshot %}
+                                            <button onclick="showScreenshotModal({{ acc.id }}, '{{ acc.username }}')" class="p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-rose-400 hover:text-rose-300 transition-all duration-200" title="Fehler-Screenshot anzeigen">
+                                                <i data-lucide="image" class="w-4 h-4"></i>
+                                            </button>
+                                        {% endif %}
+                                        <button onclick="showEditModal({{ acc.id }}, '{{ acc.username }}', '{{ acc.proxy_url if acc.proxy_url != 'Kein Proxy' else '' }}', '{{ acc.fallback_proxy_url if acc.fallback_proxy_url != 'Kein Proxy' else '' }}')" class="p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-amber-400 hover:text-amber-300 transition-all duration-200" title="Konto bearbeiten">
+                                            <i data-lucide="edit-3" class="w-4 h-4"></i>
+                                        </button>
                                         <form action="/admin/accounts/{{ acc.id }}/refresh" method="POST" class="inline refresh-form">
                                             <button type="submit" class="refresh-btn p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-blue-400 hover:text-blue-300 transition-all duration-200" title="Session erneuern (Playwright Login)">
                                                 <i data-lucide="refresh-cw" class="w-4 h-4 refresh-icon"></i>
@@ -306,6 +314,69 @@
         </div>
     </main>
 
+    <!-- Screenshot Modal -->
+    <div id="screenshot-modal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="glass-card max-w-4xl w-full rounded-2xl overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh]">
+            <div class="p-4 border-b border-reddit-border flex items-center justify-between">
+                <h3 id="screenshot-modal-title" class="font-bold text-white">Fehler-Screenshot</h3>
+                <button onclick="closeScreenshotModal()" class="text-slate-400 hover:text-white transition-all">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-6 overflow-auto flex justify-center bg-reddit-dark">
+                <img id="screenshot-modal-img" src="" alt="Playwright Error Screenshot" class="max-w-full h-auto object-contain max-h-[60vh] border border-reddit-border rounded-xl">
+            </div>
+            <div class="p-4 border-t border-reddit-border flex justify-end space-x-3 bg-reddit-card/50">
+                <a id="screenshot-modal-download" href="" download class="flex items-center space-x-1.5 text-xs bg-reddit-orange hover:bg-reddit-orange/90 text-white font-semibold px-4 py-2 rounded-xl transition-all">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                    <span>Herunterladen</span>
+                </a>
+                <button onclick="closeScreenshotModal()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold px-4 py-2 rounded-xl transition-all">
+                    Schließen
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="edit-modal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div class="glass-card max-w-md w-full rounded-2xl overflow-hidden shadow-2xl relative">
+            <div class="p-4 border-b border-reddit-border flex items-center justify-between">
+                <h3 class="font-bold text-white">Konto bearbeiten</h3>
+                <button onclick="closeEditModal()" class="text-slate-400 hover:text-white transition-all">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <form id="edit-form" action="" method="POST" class="p-6 space-y-4">
+                <div class="space-y-1">
+                     <label class="text-xs text-slate-400 font-semibold">Reddit Username</label>
+                     <input type="text" id="edit-username" name="username" required class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all">
+                </div>
+                <div class="space-y-1">
+                     <label class="text-xs text-slate-400 font-semibold">Reddit Passwort (leer lassen für keine Änderung)</label>
+                     <input type="password" name="password" placeholder="••••••••" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all">
+                </div>
+                <div class="space-y-1">
+                     <label class="text-xs text-slate-400 font-semibold">Haupt-Proxy</label>
+                     <input type="text" id="edit-proxy" name="proxy_url" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all">
+                </div>
+                <div class="space-y-1">
+                     <label class="text-xs text-slate-400 font-semibold">Fallback-Proxy</label>
+                     <input type="text" id="edit-fallback-proxy" name="fallback_proxy_url" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all">
+                </div>
+                 
+                <div class="pt-4 flex justify-end space-x-3">
+                     <button type="button" onclick="closeEditModal()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold px-4 py-2 rounded-xl transition-all">
+                         Abbrechen
+                     </button>
+                     <button type="submit" class="text-xs bg-reddit-orange hover:bg-reddit-orange/90 text-white font-semibold px-4 py-2 rounded-xl transition-all">
+                         Speichern
+                     </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer class="mt-auto py-6 border-t border-reddit-border text-center text-xs text-slate-500">
         <p>&copy; 2026 Reddit Data Extraction Suite. Alle Rechte vorbehalten.</p>
@@ -359,6 +430,53 @@
                 screenshotCard.classList.add('hidden');
             };
             debugImg.src = "/admin/debug-screenshot?t=" + new Date().getTime();
+        }
+
+        // Screenshot Modal Functions
+        function showScreenshotModal(accountId, username) {
+            const modal = document.getElementById('screenshot-modal');
+            const img = document.getElementById('screenshot-modal-img');
+            const title = document.getElementById('screenshot-modal-title');
+            const download = document.getElementById('screenshot-modal-download');
+            
+            const src = `/admin/accounts/${accountId}/screenshot?t=${new Date().getTime()}`;
+            img.src = src;
+            download.href = src;
+            title.innerText = `Fehler-Screenshot für Konto: ${username}`;
+            
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            lucide.createIcons();
+        }
+        
+        function closeScreenshotModal() {
+            const modal = document.getElementById('screenshot-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        // Edit Modal Functions
+        function showEditModal(accountId, username, proxyUrl, fallbackProxyUrl) {
+            const modal = document.getElementById('edit-modal');
+            const form = document.getElementById('edit-form');
+            const usernameInput = document.getElementById('edit-username');
+            const proxyInput = document.getElementById('edit-proxy');
+            const fallbackProxyInput = document.getElementById('edit-fallback-proxy');
+            
+            form.action = `/admin/accounts/${accountId}/edit`;
+            usernameInput.value = username;
+            proxyInput.value = proxyUrl === 'Kein Proxy' ? '' : proxyUrl;
+            fallbackProxyInput.value = fallbackProxyUrl === 'Kein Proxy' ? '' : fallbackProxyUrl;
+            
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            lucide.createIcons();
+        }
+        
+        function closeEditModal() {
+            const modal = document.getElementById('edit-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
         }
     </script>
 </body>

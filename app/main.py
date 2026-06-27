@@ -256,6 +256,7 @@ async def admin_dashboard(
     
     for acc in db_accounts:
         session_info = get_session_info_from_state(acc.session_state)
+        has_screenshot = os.path.exists(f"./app/data/last_error_{acc.username}.png")
         accounts_info.append({
             "id": acc.id,
             "username": acc.username,
@@ -266,7 +267,8 @@ async def admin_dashboard(
             "last_used_at": acc.last_used_at.isoformat() if acc.last_used_at else "Nie",
             "session_active": session_info["active"],
             "session_message": session_info["message"],
-            "session_expires": session_info.get("expires", "-")
+            "session_expires": session_info.get("expires", "-"),
+            "has_screenshot": has_screenshot
         })
     
     stats = {
@@ -367,7 +369,6 @@ async def admin_refresh_session(
     except Exception as e:
         logger.error(f"Fehler bei Session-Refresh für {acc.username}: {e}")
         return RedirectResponse(url=f"/admin/dashboard?error=Refresh-Fehler+fuer+{acc.username}:+{str(e)}", status_code=303)
-
 @app.get("/admin/playground", response_class=HTMLResponse)
 async def admin_playground(
     request: Request,
@@ -384,13 +385,44 @@ async def admin_clear_logs(
     db.commit()
     return RedirectResponse(url="/admin/dashboard?success=Logs+erfolgreich+geleert", status_code=303)
 
-@app.get("/admin/debug-screenshot")
-async def admin_debug_screenshot(
-    username: str = Depends(verify_admin)
+@app.get("/admin/accounts/{account_id}/screenshot")
+async def admin_account_screenshot(
+    account_id: int,
+    admin_user: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
 ):
-    screenshot_path = "./app/data/last_error.png"
+    acc = db.query(RedditAccount).filter(RedditAccount.id == account_id).first()
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account nicht gefunden.")
+    screenshot_path = f"./app/data/last_error_{acc.username}.png"
     if os.path.exists(screenshot_path):
         return FileResponse(screenshot_path)
-    raise HTTPException(status_code=404, detail="Kein Fehler-Screenshot vorhanden.")
+    raise HTTPException(status_code=404, detail="Kein Fehler-Screenshot für dieses Konto vorhanden.")
+
+@app.post("/admin/accounts/{account_id}/edit")
+async def admin_edit_account(
+    account_id: int,
+    username: str = Form(...),
+    password: str = Form(None),
+    proxy_url: str = Form(None),
+    fallback_proxy_url: str = Form(None),
+    admin_user: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    acc = db.query(RedditAccount).filter(RedditAccount.id == account_id).first()
+    if not acc:
+        return RedirectResponse(url="/admin/dashboard?error=Account+nicht+gefunden", status_code=303)
+        
+    try:
+        acc.username = username.strip()
+        if password and password.strip():
+            acc.password = password.strip()
+        acc.proxy_url = proxy_url.strip() if proxy_url else None
+        acc.fallback_proxy_url = fallback_proxy_url.strip() if fallback_proxy_url else None
+        db.commit()
+        return RedirectResponse(url=f"/admin/dashboard?success=Konto+{acc.username}+erfolgreich+aktualisiert!", status_code=303)
+    except Exception as e:
+        db.rollback()
+        return RedirectResponse(url=f"/admin/dashboard?error=Fehler+beim+Aktualisieren+von+{acc.username}:+{str(e)}", status_code=303)
 
 

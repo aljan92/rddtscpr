@@ -194,19 +194,35 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
             
             if reddit_session:
                 logger.info("Login erfolgreich! Extrahiere storage state...")
+                # Alten Screenshot bei Erfolg löschen, falls vorhanden
+                try:
+                    import os
+                    old_screenshot = f"./app/data/last_error_{username}.png"
+                    if os.path.exists(old_screenshot):
+                        os.remove(old_screenshot)
+                except Exception:
+                    pass
                 state = await context.storage_state()
                 return json.dumps(state)
             else:
                 current_url = page.url
                 if "login" not in current_url:
                     logger.info("URL hat sich geändert, vermute erfolgreichen Login. Extrahiere state...")
+                    # Alten Screenshot bei Erfolg löschen
+                    try:
+                        import os
+                        old_screenshot = f"./app/data/last_error_{username}.png"
+                        if os.path.exists(old_screenshot):
+                            os.remove(old_screenshot)
+                    except Exception:
+                        pass
                     state = await context.storage_state()
                     return json.dumps(state)
                 
                 # Screenshot für Debugging-Zwecke speichern
                 import os
                 os.makedirs("./app/data", exist_ok=True)
-                debug_screenshot_path = "./app/data/last_error.png"
+                debug_screenshot_path = f"./app/data/last_error_{username}.png"
                 await page.screenshot(path=debug_screenshot_path)
                 logger.error(f"Login fehlgeschlagen. Screenshot unter {debug_screenshot_path} gespeichert.")
                 raise Exception("Anmeldung fehlgeschlagen: Kein Session-Cookie erhalten und keine Umleitung festgestellt.")
