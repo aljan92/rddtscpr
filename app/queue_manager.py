@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+import uuid
 from datetime import datetime
 from sqlalchemy.orm import Session
 from app.database import SessionLocal, RedditAccount
@@ -10,11 +11,15 @@ logger = logging.getLogger("rddtscpr.queue")
 
 class ScrapeRequest:
     def __init__(self, action: str, params: dict, future: asyncio.Future):
+        self.id = str(uuid.uuid4())
         self.action = action  # "subreddit" or "comments"
         self.params = params
         self.future = future
         self.attempts = 0
         self.failed_account_ids = set()
+        self.status = "Wartend"  # "Wartend", "Cooldown", "Scraping"
+        self.account_username = None
+        self.created_at = datetime.utcnow()
 
 class ScrapeQueueManager:
     def __init__(self):
@@ -22,6 +27,7 @@ class ScrapeQueueManager:
         self.worker_task = None
         self._running = False
         self.cooldown_seconds = 3.0  # Mindestabstand zwischen Zugriffen desselben Accounts
+        self.active_requests = {}  # id -> ScrapeRequest
 
     def start(self):
         if not self._running:
@@ -39,15 +45,19 @@ class ScrapeQueueManager:
                 pass
             logger.info("ScrapeQueueManager beendet.")
 
-    async def enqueue(self, action: str, params: dict) -> tuple[list, str]:
+    async def enqueue(self, action: str, params: dict) -> tuple[list, str, str]:
         """Reiht einen Request ein und wartet asynchron auf das Ergebnis."""
         if not self._running:
             self.start()
             
         future = asyncio.get_running_loop().create_future()
         request = ScrapeRequest(action, params, future)
+        self.active_requests[request.id] = request
         await self.queue.put(request)
-        return await future
+        try:
+            return await future
+        finally:
+            self.active_requests.pop(request.id, None)
 
     async def _worker_loop(self):
         while self._running:
@@ -78,7 +88,10 @@ class ScrapeQueueManager:
                 request.future.set_exception(Exception(error_msg))
                 return
 
+            request.account_username = account.username
+
             # 2. Cooldown einhalten
+            request.status = "Cooldown"
             await self._enforce_cooldown(account)
 
             # 3. Account als verwendet markieren
@@ -94,6 +107,7 @@ class ScrapeQueueManager:
 
             try:
                 # 4. Request ausführen
+                request.status = "Scraping"
                 result = await self._execute_scrape(request.action, request.params, session_state, proxy_url)
                 
                 # Erfolg: Counter zurücksetzen, Request-Zähler erhöhen und Ergebnis zurückgeben
@@ -114,6 +128,7 @@ class ScrapeQueueManager:
                 if account.fallback_proxy_url:
                     logger.info(f"Probiere Fallback-Proxy für Account '{account.username}'...")
                     try:
+                        request.status = "Scraping"
                         result = await self._execute_scrape(request.action, request.params, session_state, account.fallback_proxy_url)
                         account.failure_count = 0
                         account.request_count = (account.request_count or 0) + 1
@@ -139,6 +154,8 @@ class ScrapeQueueManager:
                 request.failed_account_ids.add(account.id)
                 if request.attempts < 3:
                     logger.info(f"Re-enqueuing Request für einen weiteren Versuch mit anderem Account...")
+                    request.status = "Wartend"
+                    request.account_username = None
                     # Zurück in die Queue legen
                     await self.queue.put(request)
                 else:
@@ -197,6 +214,39 @@ class ScrapeQueueManager:
             )
         else:
             raise ValueError(f"Unbekannte Aktion: {action}")
+
+    def get_queue_status(self) -> dict:
+        """Gibt den aktuellen Status der Warteschlange und aktive Anfragen zurück."""
+        sorted_requests = sorted(self.active_requests.values(), key=lambda r: r.created_at)
+        items = []
+        pending_count = 0
+        active_count = 0
+        
+        for r in sorted_requests:
+            if r.status == "Wartend":
+                pending_count += 1
+            else:
+                active_count += 1
+                
+            items.append({
+                "id": r.id,
+                "action": "Subreddit" if r.action == "subreddit" else "Kommentare",
+                "target": r.params.get("target") or r.params.get("post_url", ""),
+                "status": r.status,
+                "account": r.account_username or "-",
+                "attempts": r.attempts,
+                "age_seconds": int((datetime.utcnow() - r.created_at).total_seconds())
+            })
+            
+        return {
+            "stats": {
+                "total": len(items),
+                "pending": pending_count,
+                "active": active_count,
+                "cooldown_seconds": self.cooldown_seconds
+            },
+            "requests": items
+        }
 
 # Globaler Singleton-Manager
 scrape_queue = ScrapeQueueManager()

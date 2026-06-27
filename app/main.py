@@ -443,6 +443,36 @@ async def admin_playground(
 ):
     return templates.TemplateResponse("playground.html", {"request": request})
 
+@app.get("/admin/queue", response_class=HTMLResponse)
+async def admin_queue(
+    request: Request,
+    username: str = Depends(verify_admin)
+):
+    status = scrape_queue.get_queue_status()
+    return templates.TemplateResponse("queue.html", {
+        "request": request,
+        "cooldown_seconds": scrape_queue.cooldown_seconds,
+        "stats": status["stats"],
+        "requests": status["requests"]
+    })
+
+@app.get("/admin/queue/api")
+async def admin_queue_api(
+    username: str = Depends(verify_admin)
+):
+    return scrape_queue.get_queue_status()
+
+@app.post("/admin/queue/settings")
+async def admin_queue_settings(
+    cooldown_seconds: float = Form(...),
+    username: str = Depends(verify_admin)
+):
+    if cooldown_seconds < 0.0:
+        return RedirectResponse(url="/admin/queue?error=Ungueltiger+Wert+fuer+Pause.", status_code=303)
+    scrape_queue.cooldown_seconds = cooldown_seconds
+    logger.info(f"Cooldown-Sekunden ueber Admin-UI auf {cooldown_seconds}s geaendert.")
+    return RedirectResponse(url=f"/admin/queue?success=Pause+erfolgreich+auf+{cooldown_seconds}s+geaendert!", status_code=303)
+
 @app.get("/admin/logs/clear")
 async def admin_clear_logs(
     username: str = Depends(verify_admin),

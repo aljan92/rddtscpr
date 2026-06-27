@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit Scraper - Warteschlange</title>
+    <!-- Outfit Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS (CDN) für Layouting -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        reddit: {
+                            orange: '#FF4500',
+                            dark: '#0B1426',
+                            card: '#152238',
+                            border: '#1F2D44'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            background-color: #0B1426;
+            background-image: radial-gradient(circle at 10% 20%, rgba(255, 69, 0, 0.05) 0%, transparent 40%),
+                              radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 40%);
+        }
+        .glass-card {
+            background: rgba(21, 34, 56, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(31, 45, 68, 0.8);
+        }
+    </style>
+</head>
+<body class="text-slate-200 min-h-screen font-sans flex flex-col">
+    <!-- Navbar -->
+    <nav class="glass-card sticky top-0 z-50 border-b border-reddit-border px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="bg-reddit-orange p-2 rounded-xl text-white shadow-lg shadow-reddit-orange/20 animate-pulse">
+                <i data-lucide="database" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight text-white">Reddit Scraper</h1>
+                <p class="text-xs text-slate-400">Data Extraction Engine v1.0.0</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <a href="/admin/dashboard" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="/admin/queue" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg bg-reddit-orange/10 text-reddit-orange border border-reddit-orange/20 hover:bg-reddit-orange/20 transition-all duration-200">
+                <i data-lucide="list-ordered" class="w-4 h-4"></i>
+                <span>Queue</span>
+            </a>
+            <a href="/admin/playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="play" class="w-4 h-4"></i>
+                <span>Playground</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow p-6 max-w-7xl mx-auto w-full space-y-6">
+        <!-- Status Messages -->
+        <div id="alert-container">
+            {% if request.query_params.get('success') %}
+            <div class="flex items-center space-x-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 mb-6">
+                <i data-lucide="check-circle" class="w-5 h-5 flex-shrink-0"></i>
+                <p class="text-sm font-medium">{{ request.query_params.get('success') }}</p>
+            </div>
+            {% endif %}
+            {% if request.query_params.get('error') %}
+            <div class="flex items-center space-x-3 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 mb-6">
+                <i data-lucide="alert-circle" class="w-5 h-5 flex-shrink-0"></i>
+                <p class="text-sm font-medium">{{ request.query_params.get('error') }}</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Settings Card -->
+            <div class="glass-card p-6 rounded-2xl flex flex-col justify-between">
+                <div class="space-y-4">
+                    <h2 class="text-lg font-semibold text-white flex items-center space-x-2">
+                        <i data-lucide="sliders" class="w-5 h-5 text-reddit-orange"></i>
+                        <span>Queue-Einstellungen</span>
+                    </h2>
+                    <p class="text-xs text-slate-400">
+                        Pausenzeit (Cooldown) steuern, die jeder Reddit-Account zwischen aufeinanderfolgenden Anfragen einhalten muss, um Sperren zu vermeiden.
+                    </p>
+                    
+                    <form action="/admin/queue/settings" method="POST" class="space-y-4 pt-2">
+                        <div>
+                            <label for="cooldown_seconds" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                                Pause zwischen Anfragen (Sekunden)
+                            </label>
+                            <div class="relative">
+                                <input type="number" step="0.5" min="0" name="cooldown_seconds" id="cooldown_seconds" value="{{ cooldown_seconds }}"
+                                       class="w-full bg-reddit-dark/50 border border-reddit-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange focus:ring-1 focus:ring-reddit-orange transition-all duration-200 font-medium">
+                                <span class="absolute right-4 top-3 text-slate-500 text-sm font-medium">Sek.</span>
+                            </div>
+                        </div>
+                        <button type="submit" class="w-full bg-reddit-orange hover:bg-reddit-orange/90 text-white font-medium py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center space-x-2 shadow-lg shadow-reddit-orange/20">
+                            <i data-lucide="save" class="w-4 h-4"></i>
+                            <span>Speichern</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Stats Card (Spans 2 cols) -->
+            <div class="glass-card p-6 rounded-2xl lg:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Stat 1 -->
+                <div class="bg-reddit-dark/40 border border-reddit-border/50 rounded-xl p-5 flex flex-col justify-between">
+                    <div>
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Anfragen Gesamt</span>
+                        <h3 class="text-3xl font-bold text-white mt-1" id="stat-total">{{ stats.total }}</h3>
+                    </div>
+                    <div class="flex items-center space-x-2 text-xs text-slate-400 mt-4">
+                        <i data-lucide="activity" class="w-4 h-4 text-reddit-orange"></i>
+                        <span>Aktuelle Warteschlangenlänge</span>
+                    </div>
+                </div>
+
+                <!-- Stat 2 -->
+                <div class="bg-reddit-dark/40 border border-reddit-border/50 rounded-xl p-5 flex flex-col justify-between">
+                    <div>
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Wartend</span>
+                        <h3 class="text-3xl font-bold text-amber-500 mt-1" id="stat-pending">{{ stats.pending }}</h3>
+                    </div>
+                    <div class="flex items-center space-x-2 text-xs text-slate-400 mt-4">
+                        <i data-lucide="clock" class="w-4 h-4 text-amber-500"></i>
+                        <span>Warten auf Zuweisung</span>
+                    </div>
+                </div>
+
+                <!-- Stat 3 -->
+                <div class="bg-reddit-dark/40 border border-reddit-border/50 rounded-xl p-5 flex flex-col justify-between">
+                    <div>
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">In Verarbeitung</span>
+                        <h3 class="text-3xl font-bold text-emerald-500 mt-1" id="stat-active">{{ stats.active }}</h3>
+                    </div>
+                    <div class="flex items-center space-x-2 text-xs text-slate-400 mt-4">
+                        <i data-lucide="play-circle" class="w-4 h-4 text-emerald-500"></i>
+                        <span>Cooldown oder Scraping läuft</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Queue List -->
+        <div class="glass-card rounded-2xl overflow-hidden">
+            <div class="px-6 py-5 border-b border-reddit-border flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="bg-reddit-orange/10 p-2 rounded-lg text-reddit-orange">
+                        <i data-lucide="list-ordered" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-white">Anstehende & Aktive Anfragen</h3>
+                        <p class="text-xs text-slate-400">Echtzeit-Ansicht der Hintergrund-Warteschlange</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2 text-xs text-slate-500">
+                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping mr-1"></span>
+                    <span>Live-Polling aktiv</span>
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto w-full">
+                <table class="w-full text-left border-collapse" id="queue-table">
+                    <thead>
+                        <tr class="border-b border-reddit-border text-slate-400 text-xs font-semibold uppercase tracking-wider bg-reddit-dark/20">
+                            <th class="px-6 py-4">Alter</th>
+                            <th class="px-6 py-4">Typ</th>
+                            <th class="px-6 py-4">Ziel (URL / Subreddit)</th>
+                            <th class="px-6 py-4">Zugewiesenes Konto</th>
+                            <th class="px-6 py-4 text-center">Versuche</th>
+                            <th class="px-6 py-4 text-right">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-reddit-border/30 text-sm" id="queue-tbody">
+                        {% if not requests %}
+                        <tr id="empty-row">
+                            <td colspan="6" class="px-6 py-12 text-center text-slate-500">
+                                <div class="flex flex-col items-center space-y-3">
+                                    <i data-lucide="inbox" class="w-8 h-8 text-slate-600"></i>
+                                    <span class="font-medium text-slate-400">Keine aktiven Anfragen in der Warteschlange</span>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                            {% for req in requests %}
+                            <tr class="hover:bg-slate-800/10 transition-colors">
+                                <td class="px-6 py-4 font-mono text-xs text-slate-400">{{ req.age_seconds }}s</td>
+                                <td class="px-6 py-4">
+                                    <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                                        {{ req.action }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 max-w-xs truncate font-medium text-slate-300" title="{{ req.target }}">
+                                    {{ req.target }}
+                                </td>
+                                <td class="px-6 py-4">
+                                    <span class="flex items-center space-x-1.5 text-slate-300">
+                                        <i data-lucide="user" class="w-4 h-4 text-slate-500"></i>
+                                        <span>{{ req.account }}</span>
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 text-center font-mono font-medium text-slate-300">{{ req.attempts }} / 3</td>
+                                <td class="px-6 py-4 text-right">
+                                    {% if req.status == 'Wartend' %}
+                                    <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 border border-amber-500/20 text-amber-500">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                        <span>Wartend</span>
+                                    </span>
+                                    {% elif req.status == 'Cooldown' %}
+                                    <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                                        <span>Cooldown</span>
+                                    </span>
+                                    {% else %}
+                                    <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                                        <span>Scraping</span>
+                                    </span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="glass-card border-t border-reddit-border px-6 py-4 mt-12 text-center text-xs text-slate-500">
+        <p>&copy; 2026 Reddit Scraper Control. Alle Rechte vorbehalten.</p>
+    </footer>
+
+    <!-- Interactive script for dynamic updates -->
+    <script>
+        // Lucide Icons initialisieren
+        lucide.createIcons();
+
+        // AJAX Polling zur Live-Aktualisierung
+        async function updateQueue() {
+            try {
+                const response = await fetch('/admin/queue/api');
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                
+                // Stats aktualisieren
+                document.getElementById('stat-total').innerText = data.stats.total;
+                document.getElementById('stat-pending').innerText = data.stats.pending;
+                document.getElementById('stat-active').innerText = data.stats.active;
+                
+                const tbody = document.getElementById('queue-tbody');
+                
+                if (data.requests.length === 0) {
+                    tbody.innerHTML = `
+                        <tr id="empty-row">
+                            <td colspan="6" class="px-6 py-12 text-center text-slate-500">
+                                <div class="flex flex-col items-center space-y-3">
+                                    <i data-lucide="inbox" class="w-8 h-8 text-slate-600"></i>
+                                    <span class="font-medium text-slate-400">Keine aktiven Anfragen in der Warteschlange</span>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                    lucide.createIcons();
+                    return;
+                }
+                
+                let html = '';
+                data.requests.forEach(req => {
+                    let badgeClass = '';
+                    let dotClass = '';
+                    if (req.status === 'Wartend') {
+                        badgeClass = 'bg-amber-500/10 border-amber-500/20 text-amber-500';
+                        dotClass = 'bg-amber-500';
+                    } else if (req.status === 'Cooldown') {
+                        badgeClass = 'bg-blue-500/10 border-blue-500/20 text-blue-400';
+                        dotClass = 'bg-blue-500 animate-pulse';
+                    } else {
+                        badgeClass = 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400';
+                        dotClass = 'bg-emerald-500 animate-ping';
+                    }
+                    
+                    html += `
+                        <tr class="hover:bg-slate-800/10 transition-colors">
+                            <td class="px-6 py-4 font-mono text-xs text-slate-400">${req.age_seconds}s</td>
+                            <td class="px-6 py-4">
+                                <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                                    ${req.action}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 max-w-xs truncate font-medium text-slate-300" title="${req.target}">
+                                ${req.target}
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="flex items-center space-x-1.5 text-slate-300">
+                                    <i data-lucide="user" class="w-4 h-4 text-slate-500"></i>
+                                    <span>${req.account}</span>
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 text-center font-mono font-medium text-slate-300">${req.attempts} / 3</td>
+                            <td class="px-6 py-4 text-right">
+                                <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold ${badgeClass} border">
+                                    <span class="w-1.5 h-1.5 rounded-full ${dotClass}"></span>
+                                    <span>${req.status}</span>
+                                </span>
+                            </td>
+                        </tr>
+                    `;
+                });
+                
+                tbody.innerHTML = html;
+                lucide.createIcons();
+            } catch (err) {
+                console.error("Fehler beim Abrufen des Queue-Status:", err);
+            }
+        }
+
+        // Alle 3 Sekunden pollen
+        setInterval(updateQueue, 3000);
+    </script>
+</body>
+</html>
