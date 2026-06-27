@@ -9,8 +9,6 @@ services:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres_password}
       POSTGRES_DB: ${DB_NAME:-rddtscpr}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -19,7 +17,7 @@ services:
     container_name: rddtscpr_web
     restart: always
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres_password}@db:5432/${DB_NAME:-rddtscpr}
       - REDDIT_USERNAME=${REDDIT_USERNAME}
