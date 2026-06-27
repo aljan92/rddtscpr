@@ -69,13 +69,13 @@ def check_rapidapi_access(request: Request):
         if not (is_sub_valid or is_secret_valid):
             raise HTTPException(
                 status_code=403,
-                detail="Zugriff verweigert. Im Sandbox-Modus ist eine gueltige Test-Subscription (Basic/Pro/Ultra) oder das Proxy-Secret erforderlich."
+                detail="Access denied. In Sandbox Mode, a valid test subscription (Basic/Pro/Ultra) or the Proxy Secret is required."
             )
     else:
         if not is_secret_valid:
             raise HTTPException(
                 status_code=403,
-                detail="Ungueltiger RapidAPI-Proxy-Secret Header."
+                detail="Invalid X-RapidAPI-Proxy-Secret header."
             )
 
 @app.on_event("startup")
@@ -120,11 +120,11 @@ async def api_subreddit_posts(
                 logger.info(f"Sortierung aus URL extrahiert und überschrieben: {sort}")
 
     if sort not in ["hot", "new", "top", "rising"]:
-        raise HTTPException(status_code=400, detail="Ungültiger 'sort'-Wert. Erlaubt: hot, new, top, rising")
+        raise HTTPException(status_code=400, detail="Invalid 'sort' value. Allowed: hot, new, top, rising")
     if timeframe not in ["hour", "day", "week", "month", "year", "all"]:
-        raise HTTPException(status_code=400, detail="Ungültiger 'timeframe'-Wert. Erlaubt: hour, day, week, month, year, all")
+        raise HTTPException(status_code=400, detail="Invalid 'timeframe' value. Allowed: hour, day, week, month, year, all")
     if limit < 1 or limit > 100:
-        raise HTTPException(status_code=400, detail="Limit muss zwischen 1 und 100 liegen.")
+        raise HTTPException(status_code=400, detail="Limit must be between 1 and 100.")
 
     start_time = time.time()
     method_used = "json"
@@ -190,7 +190,7 @@ async def api_subreddit_posts(
         
         raise HTTPException(
             status_code=500,
-            detail={"error": "Scraping-Fehler", "message": error_msg}
+            detail={"error": "Scraping error", "message": error_msg}
         )
 
 @app.get("/v1/post-comments")
@@ -220,15 +220,15 @@ async def api_post_comments(
         if subscription.lower() == "basic":
             raise HTTPException(
                 status_code=403,
-                detail="Das Feature 'load_more' ist fuer den Basic-Plan gesperrt. Bitte fuehre ein Upgrade durch."
+                detail="The 'load_more' feature is restricted to Pro and Ultra plans. Please upgrade your subscription."
             )
 
     if sort not in ["confidence", "top", "new", "controversial", "old", "qa"]:
-        raise HTTPException(status_code=400, detail="Ungültiger 'sort'-Wert. Erlaubt: confidence, top, new, controversial, old, qa")
+        raise HTTPException(status_code=400, detail="Invalid 'sort' value. Allowed: confidence, top, new, controversial, old, qa")
     if limit < 1 or limit > 100:
-        raise HTTPException(status_code=400, detail="Limit muss zwischen 1 und 100 liegen.")
+        raise HTTPException(status_code=400, detail="Limit must be between 1 and 100.")
     if not post_url.startswith("http"):
-        raise HTTPException(status_code=400, detail="Ungültige Post-URL. URL muss mit http/https beginnen.")
+        raise HTTPException(status_code=400, detail="Invalid post URL. URL must start with http/https.")
 
     start_time = time.time()
     method_used = "json"
@@ -291,7 +291,7 @@ async def api_post_comments(
         
         raise HTTPException(
             status_code=500,
-            detail={"error": "Scraping-Fehler", "message": error_msg}
+            detail={"error": "Scraping error", "message": error_msg}
         )
 
 # =====================================================================
