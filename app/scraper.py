@@ -195,7 +195,15 @@ async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: s
         try:
             # Zu Reddit navigieren
             await page.goto(url, wait_until="domcontentloaded", timeout=45000)
-            await page.wait_for_timeout(3000)  # Kurz warten, um JS-Rendering zu erlauben
+            
+            # Warten, bis mindestens ein Post geladen wird
+            try:
+                await page.wait_for_selector("shreddit-post", timeout=10000)
+            except Exception as e:
+                logger.warning(f"Playwright: shreddit-post nicht innerhalb des Timeouts geladen: {e}")
+                # Screenshot für Debugging-Zwecke speichern
+                os.makedirs("./app/data", exist_ok=True)
+                await page.screenshot(path="./app/data/last_error.png")
             
             # Subreddit-Posts über shreddit-post Komponenten holen
             posts = []
@@ -209,8 +217,6 @@ async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: s
                     score = await elem.get_attribute("score") or "0"
                     comment_count = await elem.get_attribute("comment-count") or "0"
                     
-                    # Beschreibung (Teaser) extrahieren
-                    # Meistens in einem Div mit slot="text-body" oder im inneren Text
                     description = ""
                     text_elem = await elem.query_selector("[slot='text-body']")
                     if text_elem:
@@ -227,6 +233,12 @@ async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: s
                 except Exception as inner_e:
                     logger.warning(f"Fehler beim Parsen eines Posts: {inner_e}")
                     continue
+            
+            if not posts:
+                # Falls keine Posts gefunden wurden, machen wir einen Screenshot, um zu sehen, was das Problem war (z.B. Cookie Banner)
+                os.makedirs("./app/data", exist_ok=True)
+                await page.screenshot(path="./app/data/last_error.png")
+                logger.warning("Playwright: Keine Posts gefunden. Screenshot gespeichert.")
                     
             return posts
         finally:
@@ -247,7 +259,13 @@ async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, 
         browser, context, page = await launch_browser(p, proxy)
         try:
             await page.goto(url, wait_until="domcontentloaded", timeout=45000)
-            await page.wait_for_timeout(3000)
+            
+            try:
+                await page.wait_for_selector("shreddit-comment", timeout=10000)
+            except Exception as e:
+                logger.warning(f"Playwright: shreddit-comment nicht innerhalb des Timeouts geladen: {e}")
+                os.makedirs("./app/data", exist_ok=True)
+                await page.screenshot(path="./app/data/last_error.png")
             
             comments = []
             comment_elements = await page.query_selector_all("shreddit-comment")
@@ -258,13 +276,11 @@ async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, 
                     score = await elem.get_attribute("score") or "0"
                     depth = await elem.get_attribute("depth") or "0"
                     
-                    # Kommentartext extrahieren (liegt meistens im div mit id="*-post-rtjson-content")
                     text_elem = await elem.query_selector("[id$='-post-rtjson-content']")
                     comment_text = ""
                     if text_elem:
                         comment_text = await text_elem.inner_text()
                     else:
-                        # Fallback: Alles auslesen außer dem Header-Bereich
                         comment_text = await elem.inner_text()
                     
                     comments.append({
@@ -277,6 +293,11 @@ async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, 
                     logger.warning(f"Fehler beim Parsen eines Kommentars: {inner_e}")
                     continue
                     
+            if not comments:
+                os.makedirs("./app/data", exist_ok=True)
+                await page.screenshot(path="./app/data/last_error.png")
+                logger.warning("Playwright: Keine Kommentare gefunden. Screenshot gespeichert.")
+                
             return comments
         finally:
             await page.close()

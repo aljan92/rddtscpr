@@ -150,6 +150,21 @@
             </div>
         </div>
 
+        <!-- Screenshot Section (Hidden by default, shown if image exists) -->
+        <div id="screenshot-card" class="glass-card p-6 rounded-2xl hidden">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold text-white flex items-center space-x-2">
+                    <i data-lucide="image" class="text-rose-400 w-5 h-5"></i>
+                    <span>Letzter Fehler-Screenshot (Browser-Diagnose)</span>
+                </h2>
+                <a href="/admin/debug-screenshot" target="_blank" class="text-xs text-blue-400 hover:underline">In neuem Tab öffnen</a>
+            </div>
+            <p class="text-xs text-slate-400 mb-4">Dieser Screenshot zeigt den Zustand von Reddit, als das unauthentifizierte Scraping fehlschlug (z.B. Cookie Banner oder Login-Wall).</p>
+            <div class="border border-reddit-border rounded-xl overflow-hidden bg-reddit-dark flex justify-center">
+                <img id="debug-img" src="/admin/debug-screenshot" alt="Letzter Playwright Screenshot" class="max-w-full h-auto max-h-[450px] object-contain">
+            </div>
+        </div>
+
         <!-- Request Logs Section -->
         <div class="glass-card rounded-2xl overflow-hidden">
             <div class="p-6 border-b border-reddit-border flex items-center justify-between">
@@ -280,6 +295,20 @@
             } catch (e) {
                 // Bei Fehler originalen String belassen
             }
+        // Debug Screenshot check
+        const debugImg = document.getElementById('debug-img');
+        const screenshotCard = document.getElementById('screenshot-card');
+        if (debugImg) {
+            // Falls das Bild geladen werden kann, zeigen wir die Karte
+            debugImg.onload = function() {
+                screenshotCard.classList.remove('hidden');
+            };
+            // Falls das Bild 404 wirft (nicht vorhanden), verstecken wir die Karte
+            debugImg.onerror = function() {
+                screenshotCard.classList.add('hidden');
+            };
+            // Cache-Buster hinzufügen, um neuere Screenshots verlässlich anzuzeigen
+            debugImg.src = "/admin/debug-screenshot?t=" + new Date().getTime();
         }
     </script>
 </body>

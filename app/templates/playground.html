@@ -322,14 +322,36 @@
 
         // Copy JSON to Clipboard
         copyBtn.addEventListener('click', function() {
-            navigator.clipboard.writeText(jsonOutput.innerText).then(() => {
-                const span = this.querySelector('span');
-                const origText = span.innerText;
-                span.innerText = 'Kopiert!';
-                setTimeout(() => {
-                    span.innerText = origText;
-                }, 2000);
-            });
+            const textToCopy = jsonOutput.innerText;
+            const span = this.querySelector('span');
+            const origText = span.innerText;
+
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    span.innerText = 'Kopiert!';
+                    setTimeout(() => { span.innerText = origText; }, 2000);
+                });
+            } else {
+                // Fallback für ungesicherte Kontexte (HTTP)
+                const textArea = document.createElement("textarea");
+                textArea.value = textToCopy;
+                textArea.style.position = "fixed";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                try {
+                    const successful = document.execCommand('copy');
+                    if (successful) {
+                        span.innerText = 'Kopiert!';
+                    } else {
+                        span.innerText = 'Fehler!';
+                    }
+                } catch (err) {
+                    span.innerText = 'Fehler!';
+                }
+                document.body.removeChild(textArea);
+                setTimeout(() => { span.innerText = origText; }, 2000);
+            }
         });
     </script>
 </body>

@@ -2,7 +2,7 @@ import os
 import time
 import logging
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -296,3 +296,13 @@ async def admin_clear_logs(
     db.query(APIRequestLog).delete()
     db.commit()
     return RedirectResponse(url="/admin/dashboard?success=Logs+erfolgreich+geleert", status_code=303)
+
+@app.get("/admin/debug-screenshot")
+async def admin_debug_screenshot(
+    username: str = Depends(verify_admin)
+):
+    screenshot_path = "./app/data/last_error.png"
+    if os.path.exists(screenshot_path):
+        return FileResponse(screenshot_path)
+    raise HTTPException(status_code=404, detail="Kein Fehler-Screenshot vorhanden.")
+
