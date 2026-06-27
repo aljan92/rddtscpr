@@ -78,6 +78,31 @@
     <main class="flex-grow p-6 max-w-7xl mx-auto w-full space-y-6">
         <!-- Status Messages -->
         <div id="alert-container"></div>
+
+        <!-- API Endpoints Bar -->
+        <div class="glass-card p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4 text-xs">
+            <div class="flex items-center space-x-2 text-slate-400">
+                <i data-lucide="link" class="w-4 h-4 text-reddit-orange"></i>
+                <span class="font-semibold uppercase tracking-wider text-[10px]">API Endpoints:</span>
+            </div>
+            <div class="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+                <!-- Endpoint 1 -->
+                <div class="flex items-center space-x-2 bg-reddit-dark/50 border border-reddit-border px-3 py-1.5 rounded-lg w-full sm:w-auto justify-between">
+                    <code class="font-mono text-slate-300">GET /v1/subreddit-posts</code>
+                    <button onclick="copyToClipboard('https://api.angermann.work/v1/subreddit-posts', this)" class="text-slate-400 hover:text-white transition-colors p-1" title="Kopieren">
+                        <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+                <!-- Endpoint 2 -->
+                <div class="flex items-center space-x-2 bg-reddit-dark/50 border border-reddit-border px-3 py-1.5 rounded-lg w-full sm:w-auto justify-between">
+                    <code class="font-mono text-slate-300">GET /v1/post-comments</code>
+                    <button onclick="copyToClipboard('https://api.angermann.work/v1/post-comments', this)" class="text-slate-400 hover:text-white transition-colors p-1" title="Kopieren">
+                        <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Session & Control Section -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <!-- Reddit Accounts List (Left col, span 2) -->
@@ -509,6 +534,21 @@
             const modal = document.getElementById('edit-modal');
             modal.classList.remove('flex');
             modal.classList.add('hidden');
+        }
+
+        function copyToClipboard(text, button) {
+            navigator.clipboard.writeText(text).then(() => {
+                const icon = button.querySelector('i');
+                const originalLucide = icon.getAttribute('data-lucide');
+                icon.setAttribute('data-lucide', 'check');
+                button.classList.add('text-emerald-400');
+                lucide.createIcons();
+                setTimeout(() => {
+                    icon.setAttribute('data-lucide', 'copy');
+                    button.classList.remove('text-emerald-400');
+                    lucide.createIcons();
+                }, 1500);
+            });
         }
     </script>
 </body>
