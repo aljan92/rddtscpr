@@ -184,7 +184,7 @@ async def login_to_reddit(username, password, proxy_url=None):
                     return True
                 
                 # Screenshot für Debugging-Zwecke speichern
-                debug_screenshot_path = "./app/data/login_failed.png"
+                debug_screenshot_path = "./app/data/last_error.png"
                 await page.screenshot(path=debug_screenshot_path)
                 logger.error(f"Login fehlgeschlagen. Screenshot unter {debug_screenshot_path} gespeichert.")
                 raise Exception("Anmeldung fehlgeschlagen: Kein Session-Cookie erhalten und keine Umleitung festgestellt.")
