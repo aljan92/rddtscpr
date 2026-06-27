@@ -113,6 +113,19 @@ async def shutdown_event():
     logger.info("Scrape-Queue gestoppt.")
 
 # =====================================================================
+# HEALTH CHECK & ROOT
+# =====================================================================
+
+@app.get("/ping", tags=["Health"])
+async def health_check():
+    """Public health check endpoint – used by RapidAPI and monitoring tools."""
+    return {"status": "ok", "service": "Reddit Scraper API", "version": "1.0.0"}
+
+@app.get("/", include_in_schema=False)
+async def root_redirect():
+    return RedirectResponse(url="/admin/dashboard")
+
+# =====================================================================
 # PUBLIC API ENDPOINTS (Routet über Queue)
 # =====================================================================
 
