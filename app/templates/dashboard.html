@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit Scraper - Dashboard</title>
+    <!-- Outfit Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS (CDN) für Layouting -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        reddit: {
+                            orange: '#FF4500',
+                            dark: '#0B1426',
+                            card: '#152238',
+                            border: '#1F2D44'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            background-color: #0B1426;
+            background-image: radial-gradient(circle at 10% 20%, rgba(255, 69, 0, 0.05) 0%, transparent 40%),
+                              radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 40%);
+        }
+        .glass-card {
+            background: rgba(21, 34, 56, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(31, 45, 68, 0.8);
+        }
+    </style>
+</head>
+<body class="text-slate-200 min-h-screen font-sans flex flex-col">
+    <!-- Navbar -->
+    <nav class="glass-card sticky top-0 z-50 border-b border-reddit-border px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="bg-reddit-orange p-2 rounded-xl text-white shadow-lg shadow-reddit-orange/20 animate-pulse">
+                <i data-lucide="database" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight text-white">Reddit Scraper</h1>
+                <p class="text-xs text-slate-400">Data Extraction Engine v1.0.0</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <a href="/admin/dashboard" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg bg-reddit-orange/10 text-reddit-orange border border-reddit-orange/20 hover:bg-reddit-orange/20 transition-all duration-200">
+                <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="/admin/playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="play" class="w-4 h-4"></i>
+                <span>Playground</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow p-6 max-w-7xl mx-auto w-full space-y-6">
+        <!-- Status Messages -->
+        <div id="alert-container"></div>
+
+        <!-- Session & Control Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Reddit Session Status -->
+            <div class="glass-card p-6 rounded-2xl flex flex-col justify-between lg:col-span-2">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg font-semibold text-white flex items-center space-x-2">
+                            <i data-lucide="key" class="text-reddit-orange w-5 h-5"></i>
+                            <span>Reddit Login-Session</span>
+                        </h2>
+                        {% if session_info.active %}
+                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                <span class="w-2 h-2 rounded-full bg-emerald-400 mr-2 animate-ping"></span>
+                                Aktiv
+                            </span>
+                        {% else %}
+                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                                Inaktiv
+                            </span>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="space-y-3 mb-6">
+                        <div class="flex justify-between border-b border-reddit-border/50 pb-2 text-sm">
+                            <span class="text-slate-400">Hinterlegter Benutzer:</span>
+                            <span class="font-medium text-white">{{ reddit_username or 'Nicht konfiguriert' }}</span>
+                        </div>
+                        <div class="flex justify-between border-b border-reddit-border/50 pb-2 text-sm">
+                            <span class="text-slate-400">Letztes Session-Update:</span>
+                            <span class="font-medium text-white" id="session-update-time">{{ session_info.last_update or 'N/A' }}</span>
+                        </div>
+                        <div class="text-sm">
+                            <span class="text-slate-400">Details:</span>
+                            <p class="mt-1 font-mono text-xs text-slate-300 bg-slate-900/50 p-2.5 rounded-lg border border-reddit-border/30">{{ session_info.message }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <form action="/admin/login-reddit" method="POST" id="login-form">
+                    <button type="submit" id="login-btn" class="w-full flex items-center justify-center space-x-2 bg-reddit-orange hover:bg-reddit-orange/90 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-300 shadow-lg shadow-reddit-orange/20 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50">
+                        <i data-lucide="refresh-cw" id="login-icon" class="w-5 h-5"></i>
+                        <span id="login-text">Reddit-Session jetzt erneuern (Playwright Login)</span>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Stats Mini Card -->
+            <div class="glass-card p-6 rounded-2xl flex flex-col justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
+                        <i data-lucide="activity" class="text-blue-400 w-5 h-5"></i>
+                        <span>Systemstatistik</span>
+                    </h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-reddit-dark/40 p-4 rounded-xl border border-reddit-border/50">
+                            <span class="text-xs text-slate-400 block mb-1">Requests Gesamt</span>
+                            <span class="text-2xl font-bold text-white">{{ stats.total }}</span>
+                        </div>
+                        <div class="bg-reddit-dark/40 p-4 rounded-xl border border-reddit-border/50">
+                            <span class="text-xs text-slate-400 block mb-1">Erfolgsquote</span>
+                            <span class="text-2xl font-bold text-emerald-400">{{ stats.success_rate }}</span>
+                        </div>
+                        <div class="bg-reddit-dark/40 p-4 rounded-xl border border-reddit-border/50">
+                            <span class="text-xs text-slate-400 block mb-1">Ø Antwortzeit</span>
+                            <span class="text-2xl font-bold text-blue-400">{{ stats.avg_duration_ms }} ms</span>
+                        </div>
+                        <div class="bg-reddit-dark/40 p-4 rounded-xl border border-reddit-border/50">
+                            <span class="text-xs text-slate-400 block mb-1">Fehler</span>
+                            <span class="text-2xl font-bold text-rose-400">{{ stats.error }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4 pt-4 border-t border-reddit-border/50 flex justify-between text-xs text-slate-400">
+                    <span>JSON-Trick: <strong class="text-white">{{ stats.json_count }}</strong></span>
+                    <span>Playwright: <strong class="text-white">{{ stats.playwright_count }}</strong></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Request Logs Section -->
+        <div class="glass-card rounded-2xl overflow-hidden">
+            <div class="p-6 border-b border-reddit-border flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i data-lucide="list-ordered" class="text-reddit-orange w-5 h-5"></i>
+                    <h2 class="text-lg font-semibold text-white">Letzte API-Anfragen (Max. 50)</h2>
+                </div>
+                <a href="/admin/logs/clear" onclick="return confirm('Möchtest du wirklich alle Logs löschen?')" class="flex items-center space-x-1.5 text-xs text-rose-400 hover:text-rose-300 font-medium px-3 py-1.5 rounded-lg border border-rose-500/20 hover:bg-rose-500/10 transition-all duration-200">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    <span>Logs leeren</span>
+                </a>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-reddit-dark/30 border-b border-reddit-border text-slate-400 text-xs font-semibold uppercase">
+                            <th class="p-4">Zeitstempel</th>
+                            <th class="p-4">Endpunkt</th>
+                            <th class="p-4">Target (Subreddit / Post)</th>
+                            <th class="p-4">Methode</th>
+                            <th class="p-4">Dauer</th>
+                            <th class="p-4">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-reddit-border/30 text-sm">
+                        {% for log in logs %}
+                        <tr class="hover:bg-slate-800/20 transition-all duration-150">
+                            <td class="p-4 text-slate-400 font-mono text-xs">{{ log.timestamp.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+                            <td class="p-4">
+                                <span class="px-2 py-0.5 rounded font-mono text-xs bg-slate-900 border border-reddit-border text-slate-300">
+                                    {{ log.endpoint }}
+                                </span>
+                            </td>
+                            <td class="p-4 font-medium text-white max-w-xs truncate">
+                                <span title="{{ log.target }}">{{ log.target }}</span>
+                            </td>
+                            <td class="p-4">
+                                {% if log.method_used == 'json' %}
+                                    <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                        JSON
+                                    </span>
+                                {% else %}
+                                    <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                                        Playwright
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="p-4 font-mono text-slate-300">{{ log.response_time_ms }} ms</td>
+                            <td class="p-4">
+                                {% if log.status_code == 200 %}
+                                    <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                        <i data-lucide="check" class="w-3.5 h-3.5 mr-1"></i> 200 OK
+                                    </span>
+                                {% else %}
+                                    <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20 cursor-help" title="{{ log.error_message }}">
+                                        <i data-lucide="alert-circle" class="w-3.5 h-3.5 mr-1"></i> {{ log.status_code }} Error
+                                    </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="p-8 text-center text-slate-500">
+                                <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
+                                Keine Logs vorhanden.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-auto py-6 border-t border-reddit-border text-center text-xs text-slate-500">
+        <p>&copy; 2026 Reddit Data Extraction Suite. Alle Rechte vorbehalten.</p>
+    </footer>
+
+    <script>
+        // Init Lucide Icons
+        lucide.createIcons();
+
+        // Parameter-Meldungen parsen
+        const urlParams = new URLSearchParams(window.location.search);
+        const successMsg = urlParams.get('success');
+        const errorMsg = urlParams.get('error');
+        const alertContainer = document.getElementById('alert-container');
+
+        if (successMsg) {
+            alertContainer.innerHTML = `
+                <div class="flex items-center p-4 mb-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                    <i data-lucide="check-circle" class="w-5 h-5 mr-3"></i>
+                    <span class="text-sm font-medium">${decodeURIComponent(successMsg.replace(/\+/g, ' '))}</span>
+                </div>
+            `;
+        } else if (errorMsg) {
+            alertContainer.innerHTML = `
+                <div class="flex items-center p-4 mb-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
+                    <i data-lucide="x-circle" class="w-5 h-5 mr-3"></i>
+                    <span class="text-sm font-medium">${decodeURIComponent(errorMsg.replace(/\+/g, ' '))}</span>
+                </div>
+            `;
+        }
+        lucide.createIcons();
+
+        // Lade-Animation für Login
+        const loginForm = document.getElementById('login-form');
+        const loginBtn = document.getElementById('login-btn');
+        const loginIcon = document.getElementById('login-icon');
+        const loginText = document.getElementById('login-text');
+
+        if (loginForm) {
+            loginForm.addEventListener('submit', function() {
+                loginBtn.disabled = true;
+                loginIcon.classList.add('animate-spin');
+                loginText.innerText = "Logge bei Reddit ein (dauert ca. 10-15s)...";
+            });
+        }
+
+        // Formatierung des Datums
+        const sessionTimeElem = document.getElementById('session-update-time');
+        if (sessionTimeElem && sessionTimeElem.innerText !== 'N/A') {
+            try {
+                const date = new Date(sessionTimeElem.innerText);
+                sessionTimeElem.innerText = date.toLocaleString('de-DE');
+            } catch (e) {
+                // Bei Fehler originalen String belassen
+            }
+        }
+    </script>
+</body>
+</html>

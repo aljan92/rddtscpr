@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit Scraper - Playground</title>
+    <!-- Outfit Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        reddit: {
+                            orange: '#FF4500',
+                            dark: '#0B1426',
+                            card: '#152238',
+                            border: '#1F2D44'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            background-color: #0B1426;
+            background-image: radial-gradient(circle at 10% 20%, rgba(255, 69, 0, 0.05) 0%, transparent 40%),
+                              radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 40%);
+        }
+        .glass-card {
+            background: rgba(21, 34, 56, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(31, 45, 68, 0.8);
+        }
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0B1426;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1F2D44;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #FF4500;
+        }
+    </style>
+</head>
+<body class="text-slate-200 min-h-screen font-sans flex flex-col">
+    <!-- Navbar -->
+    <nav class="glass-card sticky top-0 z-50 border-b border-reddit-border px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="bg-reddit-orange p-2 rounded-xl text-white shadow-lg shadow-reddit-orange/20 animate-pulse">
+                <i data-lucide="database" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight text-white">Reddit Scraper</h1>
+                <p class="text-xs text-slate-400">Data Extraction Engine v1.0.0</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <a href="/admin/dashboard" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="/admin/playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg bg-reddit-orange/10 text-reddit-orange border border-reddit-orange/20 hover:bg-reddit-orange/20 transition-all duration-200">
+                <i data-lucide="play" class="w-4 h-4"></i>
+                <span>Playground</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow p-6 max-w-7xl mx-auto w-full flex flex-col lg:flex-row gap-6">
+        <!-- Input Form Card -->
+        <div class="glass-card p-6 rounded-2xl w-full lg:w-1/3 flex flex-col justify-between">
+            <div class="space-y-6">
+                <div>
+                    <h2 class="text-lg font-semibold text-white mb-2 flex items-center space-x-2">
+                        <i data-lucide="sliders" class="text-reddit-orange w-5 h-5"></i>
+                        <span>Konfiguration</span>
+                    </h2>
+                    <p class="text-xs text-slate-400">Passe die Parameter an, um die API-Anfrage zu testen.</p>
+                </div>
+
+                <!-- Endpoint Selection -->
+                <div class="space-y-2">
+                    <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Endpunkt</label>
+                    <select id="endpoint-select" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                        <option value="posts">Subreddit Posts (/v1/subreddit-posts)</option>
+                        <option value="comments">Post Comments (/v1/post-comments)</option>
+                    </select>
+                </div>
+
+                <!-- Subreddit Form fields -->
+                <div id="posts-fields" class="space-y-4">
+                    <div class="space-y-2">
+                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Subreddit (Name oder URL)</label>
+                        <input type="text" id="subreddit-input" placeholder="z.B. beziehungen" value="beziehungen" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-2">
+                            <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Sortierung</label>
+                            <select id="posts-sort" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                                <option value="hot">Hot</option>
+                                <option value="new">New</option>
+                                <option value="top">Top</option>
+                                <option value="rising">Rising</option>
+                            </select>
+                        </div>
+                        <div class="space-y-2" id="timeframe-container">
+                            <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Zeitraum</label>
+                            <select id="posts-timeframe" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                                <option value="day">Day</option>
+                                <option value="hour">Hour</option>
+                                <option value="week">Week</option>
+                                <option value="month">Month</option>
+                                <option value="year">Year</option>
+                                <option value="all">All</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Comments Form fields -->
+                <div id="comments-fields" class="space-y-4 hidden">
+                    <div class="space-y-2">
+                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Post URL</label>
+                        <input type="text" id="post-url-input" placeholder="https://www.reddit.com/r/..." class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Sortierung</label>
+                        <select id="comments-sort" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                            <option value="confidence">Best (Confidence)</option>
+                            <option value="top">Top</option>
+                            <option value="new">New</option>
+                            <option value="controversial">Controversial</option>
+                            <option value="old">Old</option>
+                            <option value="qa">Q&A</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Limit Field -->
+                <div class="space-y-2">
+                    <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Limit (Anzahl Einträge)</label>
+                    <input type="number" id="limit-input" min="1" max="100" value="5" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                </div>
+            </div>
+
+            <!-- Submit Button -->
+            <button id="send-request-btn" class="w-full mt-6 flex items-center justify-center space-x-2 bg-reddit-orange hover:bg-reddit-orange/90 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-300 shadow-lg shadow-reddit-orange/20 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50">
+                <i data-lucide="play" id="btn-icon" class="w-5 h-5"></i>
+                <span id="btn-text">Anfrage senden</span>
+            </button>
+        </div>
+
+        <!-- Result View Card -->
+        <div class="glass-card p-6 rounded-2xl w-full lg:w-2/3 flex flex-col">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-white flex items-center space-x-2">
+                        <i data-lucide="braces" class="text-blue-400 w-5 h-5"></i>
+                        <span>API-Response</span>
+                    </h2>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span id="response-status" class="hidden text-xs font-semibold px-2.5 py-1 rounded-full"></span>
+                    <span id="response-time" class="hidden text-xs text-slate-400 font-mono"></span>
+                    <button id="copy-btn" class="hidden items-center space-x-1 text-xs text-slate-400 hover:text-white transition-all duration-200">
+                        <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                        <span>Kopieren</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex-grow bg-slate-950 border border-reddit-border rounded-xl p-4 overflow-y-auto font-mono text-xs text-emerald-400 min-h-[400px] max-h-[600px] flex flex-col justify-between" id="response-display-container">
+                <pre class="whitespace-pre-wrap select-all" id="json-output">// Konfiguriere die API links und klicke auf "Anfrage senden" ...</pre>
+                
+                <!-- Spinner Overlay -->
+                <div id="loading-spinner" class="hidden flex-col items-center justify-center space-y-4 my-auto py-12">
+                    <div class="w-12 h-12 border-4 border-reddit-orange border-t-transparent rounded-full animate-spin"></div>
+                    <div class="text-center">
+                        <p class="text-white font-semibold">Rufe Reddit Daten ab...</p>
+                        <p class="text-xs text-slate-500 mt-1">
+                            Der .json-Trick wird ausgeführt.<br>
+                            Falls Reddit blockiert, startet Playwright (kann bis zu 30s dauern).
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-6 border-t border-reddit-border text-center text-xs text-slate-500">
+        <p>&copy; 2026 Reddit Data Extraction Suite. Alle Rechte vorbehalten.</p>
+    </footer>
+
+    <script>
+        // Init Lucide Icons
+        lucide.createIcons();
+
+        const endpointSelect = document.getElementById('endpoint-select');
+        const postsFields = document.getElementById('posts-fields');
+        const commentsFields = document.getElementById('comments-fields');
+        const timeframeContainer = document.getElementById('timeframe-container');
+        const postsSort = document.getElementById('posts-sort');
+        const sendRequestBtn = document.getElementById('send-request-btn');
+        const btnIcon = document.getElementById('btn-icon');
+        const btnText = document.getElementById('btn-text');
+        const jsonOutput = document.getElementById('json-output');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const copyBtn = document.getElementById('copy-btn');
+        const responseStatus = document.getElementById('response-status');
+        const responseTime = document.getElementById('response-time');
+
+        // Toggle Fields based on Endpoint Selection
+        endpointSelect.addEventListener('change', function() {
+            if (this.value === 'posts') {
+                postsFields.classList.remove('hidden');
+                commentsFields.classList.add('hidden');
+            } else {
+                postsFields.classList.add('hidden');
+                commentsFields.classList.remove('hidden');
+            }
+        });
+
+        // Hide timeframe if sort is not "top"
+        postsSort.addEventListener('change', function() {
+            if (this.value === 'top') {
+                timeframeContainer.style.opacity = '1';
+                timeframeContainer.style.pointerEvents = 'auto';
+            } else {
+                timeframeContainer.style.opacity = '0.4';
+                timeframeContainer.style.pointerEvents = 'none';
+            }
+        });
+
+        // Send API Request
+        sendRequestBtn.addEventListener('click', async function() {
+            // UI State loading
+            sendRequestBtn.disabled = true;
+            loadingSpinner.classList.remove('hidden');
+            jsonOutput.classList.add('hidden');
+            copyBtn.classList.add('hidden');
+            responseStatus.classList.add('hidden');
+            responseTime.classList.add('hidden');
+            btnText.innerText = 'Lade...';
+            btnIcon.setAttribute('data-lucide', 'loader-2');
+            btnIcon.classList.add('animate-spin');
+            lucide.createIcons();
+
+            const endpoint = endpointSelect.value;
+            let url = '';
+            
+            if (endpoint === 'posts') {
+                const target = encodeURIComponent(document.getElementById('subreddit-input').value);
+                const sort = document.getElementById('posts-sort').value;
+                const timeframe = document.getElementById('posts-timeframe').value;
+                const limit = document.getElementById('limit-input').value;
+                url = `/v1/subreddit-posts?target=${target}&sort=${sort}&timeframe=${timeframe}&limit=${limit}`;
+            } else {
+                const postUrl = encodeURIComponent(document.getElementById('post-url-input').value);
+                const sort = document.getElementById('comments-sort').value;
+                const limit = document.getElementById('limit-input').value;
+                url = `/v1/post-comments?post_url=${postUrl}&sort=${sort}&limit=${limit}`;
+            }
+
+            const startTime = performance.now();
+
+            try {
+                const response = await fetch(url);
+                const status = response.status;
+                const data = await response.json();
+                const duration = Math.round(performance.now() - startTime);
+
+                // Show status
+                responseStatus.classList.remove('hidden');
+                responseStatus.innerText = status === 200 ? '200 OK' : `${status} Error`;
+                if (status === 200) {
+                    responseStatus.className = 'text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+                    jsonOutput.className = 'whitespace-pre-wrap select-all text-emerald-400';
+                } else {
+                    responseStatus.className = 'text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20';
+                    jsonOutput.className = 'whitespace-pre-wrap select-all text-rose-400';
+                }
+
+                responseTime.classList.remove('hidden');
+                responseTime.innerText = `${duration} ms`;
+
+                jsonOutput.innerText = JSON.stringify(data, null, 2);
+                copyBtn.classList.remove('hidden');
+
+            } catch (err) {
+                responseStatus.classList.remove('hidden');
+                responseStatus.innerText = 'Network Error';
+                responseStatus.className = 'text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20';
+                jsonOutput.innerText = `Fehler bei der Verbindung zur API: ${err.message}`;
+            } finally {
+                // UI State restore
+                sendRequestBtn.disabled = false;
+                loadingSpinner.classList.add('hidden');
+                jsonOutput.classList.remove('hidden');
+                btnText.innerText = 'Anfrage senden';
+                btnIcon.setAttribute('data-lucide', 'play');
+                btnIcon.classList.remove('animate-spin');
+                lucide.createIcons();
+            }
+        });
+
+        // Copy JSON to Clipboard
+        copyBtn.addEventListener('click', function() {
+            navigator.clipboard.writeText(jsonOutput.innerText).then(() => {
+                const span = this.querySelector('span');
+                const origText = span.innerText;
+                span.innerText = 'Kopiert!';
+                setTimeout(() => {
+                    span.innerText = origText;
+                }, 2000);
+            });
+        });
+    </script>
+</body>
+</html>
