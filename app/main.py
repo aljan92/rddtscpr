@@ -66,6 +66,16 @@ async def api_subreddit_posts(
     """
     Extrahiert Posts aus einem bestimmten Subreddit.
     """
+    # Sortierung aus URL extrahieren und überschreiben, falls vorhanden (z.B. r/NudeGermans/rising -> rising)
+    if "reddit.com" in target or "r/" in target:
+        import re
+        match = re.search(r"r/[^/?#]+/([a-zA-Z]+)", target)
+        if match:
+            url_sort = match.group(1)
+            if url_sort in ["hot", "new", "top", "rising"]:
+                sort = url_sort
+                logger.info(f"Sortierung aus URL extrahiert und überschrieben: {sort}")
+
     if sort not in ["hot", "new", "top", "rising"]:
         raise HTTPException(status_code=400, detail="Ungültiger 'sort'-Wert. Erlaubt: hot, new, top, rising")
     if timeframe not in ["hour", "day", "week", "month", "year", "all"]:
