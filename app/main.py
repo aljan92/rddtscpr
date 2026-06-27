@@ -178,6 +178,13 @@ async def api_subreddit_posts(
             detail={"error": "Scraping-Fehler", "message": error_msg}
         )
 
+@app.get("/v1/debug-env")
+async def debug_env():
+    return {
+        "ADMIN_USERNAME": os.getenv("ADMIN_USERNAME"),
+        "ADMIN_PASSWORD": os.getenv("ADMIN_PASSWORD")
+    }
+
 @app.get("/v1/post-comments")
 async def api_post_comments(
     request: Request,
