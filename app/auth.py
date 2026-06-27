@@ -162,7 +162,9 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
                 try:
                     btn = page.locator(selector)
                     if await btn.count() > 0 and await btn.is_visible(timeout=1000):
-                        await page.fill(selector, username)
+                        await btn.click()
+                        await page.wait_for_timeout(300)
+                        await btn.type(username, delay=120)
                         username_filled = True
                         logger.info(f"Username ausgefüllt via: {selector}")
                         break
@@ -170,15 +172,21 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
                     continue
             
             if not username_filled:
-                await page.fill("input[placeholder*='Username']", username)
+                await page.click("input[placeholder*='Username']")
+                await page.wait_for_timeout(300)
+                await page.type("input[placeholder*='Username']", username, delay=120)
                 logger.info("Username ausgefüllt via Fallback-Placeholder")
+                
+            await page.wait_for_timeout(800)
                 
             password_filled = False
             for selector in ["input[name='password']", "#loginPassword", "#login-password"]:
                 try:
                     btn = page.locator(selector)
                     if await btn.count() > 0 and await btn.is_visible(timeout=1000):
-                        await page.fill(selector, password)
+                        await btn.click()
+                        await page.wait_for_timeout(300)
+                        await btn.type(password, delay=120)
                         password_filled = True
                         logger.info(f"Passwort ausgefüllt via: {selector}")
                         break
@@ -186,8 +194,13 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
                     continue
             
             if not password_filled:
-                await page.fill("input[placeholder*='Password']", password)
+                await page.click("input[placeholder*='Password']")
+                await page.wait_for_timeout(300)
+                await page.type("input[placeholder*='Password']", password, delay=120)
                 logger.info("Passwort ausgefüllt via Fallback-Placeholder")
+                
+            # Künstliche Pause vor dem Abschicken (sehr wichtig für Bot-Erkennung)
+            await page.wait_for_timeout(1500)
                 
             # Submit Button klicken
             submit_clicked = False
