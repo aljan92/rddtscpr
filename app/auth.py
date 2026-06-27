@@ -100,6 +100,16 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
             logger.info("Rufe Reddit Login-Seite auf...")
             await page.goto("https://www.reddit.com/login", wait_until="domcontentloaded", timeout=45000)
             
+            # Warten, bis die Seite weitgehend geladen ist (Telemetrie und Bot-Erkennungs-Skripte)
+            try:
+                logger.info("Warte auf networkidle (max. 10 Sekunden)...")
+                await page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception as e:
+                logger.warning(f"Timeout/Fehler beim Warten auf networkidle: {e}")
+            
+            # Kurze Pause, damit sich das DOM setzt und Cookie-Banner gerendert werden
+            await page.wait_for_timeout(2000)
+            
             # Cookie-Banner schließen, falls vorhanden
             logger.info("Prüfe auf Cookie-Banner...")
             cookie_selectors = [
@@ -114,8 +124,9 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
             ]
             for cookie_selector in cookie_selectors:
                 try:
-                    if await page.is_visible(cookie_selector, timeout=2000):
-                        await page.click(cookie_selector, force=True)
+                    btn = page.locator(cookie_selector)
+                    if await btn.count() > 0 and await btn.is_visible(timeout=2000):
+                        await btn.click(force=True)
                         logger.info(f"Cookie-Banner geschlossen via: {cookie_selector}")
                         await page.wait_for_timeout(1000)
                         break
@@ -129,8 +140,9 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
                     continue
                 for cookie_selector in ["#onetrust-accept-btn-handler", "button:has-text('Alle akzeptieren')", "button:has-text('Accept all')", "button[aria-label='Close']"]:
                     try:
-                        if await frame.is_visible(cookie_selector, timeout=500):
-                            await frame.click(cookie_selector, force=True)
+                        btn = frame.locator(cookie_selector)
+                        if await btn.count() > 0 and await btn.is_visible(timeout=500):
+                            await btn.click(force=True)
                             logger.info(f"Cookie-Banner im iframe geschlossen via: {cookie_selector}")
                             await page.wait_for_timeout(1000)
                             break
@@ -147,7 +159,8 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
             username_filled = False
             for selector in ["input[name='username']", "#loginUsername", "#login-username"]:
                 try:
-                    if await page.is_visible(selector, timeout=2000):
+                    btn = page.locator(selector)
+                    if await btn.count() > 0 and await btn.is_visible(timeout=1000):
                         await page.fill(selector, username)
                         username_filled = True
                         break
@@ -160,7 +173,8 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
             password_filled = False
             for selector in ["input[name='password']", "#loginPassword", "#login-password"]:
                 try:
-                    if await page.is_visible(selector, timeout=2000):
+                    btn = page.locator(selector)
+                    if await btn.count() > 0 and await btn.is_visible(timeout=1000):
                         await page.fill(selector, password)
                         password_filled = True
                         break
@@ -174,11 +188,14 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
             submit_clicked = False
             for selector in ["button[type='submit']", "button:has-text('Log In')", "button:has-text('Anmelden')"]:
                 try:
-                    await page.click(selector, force=True, timeout=2000)
-                    submit_clicked = True
-                    logger.info(f"Submit-Button geklickt via: {selector}")
-                    break
-                except Exception:
+                    btn = page.locator(selector)
+                    if await btn.count() > 0 and await btn.is_visible(timeout=1000):
+                        await btn.click(force=True)
+                        submit_clicked = True
+                        logger.info(f"Submit-Button geklickt via: {selector}")
+                        break
+                except Exception as ex:
+                    logger.debug(f"Klick auf {selector} fehlgeschlagen: {ex}")
                     continue
             
             if not submit_clicked:
