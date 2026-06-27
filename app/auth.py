@@ -114,6 +114,18 @@ async def login_to_reddit(username, password, proxy_url=None):
             logger.info("Rufe Reddit Login-Seite auf...")
             await page.goto("https://www.reddit.com/login", wait_until="domcontentloaded", timeout=45000)
             
+            # Cookie-Banner schließen, falls vorhanden
+            logger.info("Prüfe auf Cookie-Banner...")
+            for cookie_selector in ["button:has-text('Alle akzeptieren')", "button:has-text('Accept all')", "button:has-text('Accept All')", "button[aria-label='Close']", ".ot-sdk-row button"]:
+                try:
+                    if await page.is_visible(cookie_selector, timeout=2000):
+                        await page.click(cookie_selector)
+                        logger.info(f"Cookie-Banner geschlossen via: {cookie_selector}")
+                        await page.wait_for_timeout(1000)
+                        break
+                except Exception:
+                    continue
+
             # Explizit auf das Erscheinen eines Eingabefeldes warten
             try:
                 await page.wait_for_selector("input[name='username']", timeout=15000)
