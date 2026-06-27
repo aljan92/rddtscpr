@@ -116,10 +116,17 @@ async def scrape_subreddit_posts_json(target: str, sort: str, timeframe: str, li
         posts = []
         
         children = payload.get("data", {}).get("children", [])
-        for child in children[:limit]:
+        for child in children:
+            if len(posts) >= limit:
+                break
+                
             data = child.get("data", {})
-            # Nur echte Posts berücksichten (t3)
+            # Nur echte Posts berücksichtigen (t3)
             if child.get("kind") != "t3":
+                continue
+                
+            # Stickied Ankündigungen und Chatrooms (discussion_type: CHAT) ausfiltern
+            if data.get("stickied") or data.get("discussion_type") == "CHAT":
                 continue
                 
             image_url, video_url = detect_media(data)
@@ -389,9 +396,16 @@ async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: s
             posts = []
             
             children = payload.get("data", {}).get("children", [])
-            for child in children[:limit]:
+            for child in children:
+                if len(posts) >= limit:
+                    break
+                    
                 data = child.get("data", {})
                 if child.get("kind") != "t3":
+                    continue
+                    
+                # Stickied Ankündigungen und Chatrooms (discussion_type: CHAT) ausfiltern
+                if data.get("stickied") or data.get("discussion_type") == "CHAT":
                     continue
                     
                 image_url, video_url = detect_media(data)
