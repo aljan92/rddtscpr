@@ -38,6 +38,31 @@ def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
         )
     return credentials.username
 
+SETTINGS_FILE = "./app/data/settings.json"
+
+def load_settings() -> dict:
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"rapidapi_proxy_secret": "", "sandbox_mode": True}
+
+def save_settings(settings: dict):
+    os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(settings, f, indent=2)
+
+def check_rapidapi_access(request: Request):
+    settings = load_settings()
+    if not settings.get("sandbox_mode", True):
+        secret = settings.get("rapidapi_proxy_secret", "")
+        if secret:
+            request_secret = request.headers.get("x-rapidapi-proxy-secret")
+            if request_secret != secret:
+                raise HTTPException(status_code=403, detail="Ungueltiger RapidAPI-Proxy-Secret Header.")
+
 @app.on_event("startup")
 def startup_event():
     # DB Tabellen initialisieren
@@ -57,6 +82,7 @@ async def shutdown_event():
 
 @app.get("/v1/subreddit-posts")
 async def api_subreddit_posts(
+    request: Request,
     target: str,
     sort: str = "hot",
     timeframe: str = "day",
@@ -66,6 +92,8 @@ async def api_subreddit_posts(
     """
     Extrahiert Posts aus einem bestimmten Subreddit.
     """
+    check_rapidapi_access(request)
+
     # Sortierung aus URL extrahieren und überschreiben, falls vorhanden (z.B. r/NudeGermans/rising -> rising)
     if "reddit.com" in target or "r/" in target:
         import re
@@ -152,6 +180,7 @@ async def api_subreddit_posts(
 
 @app.get("/v1/post-comments")
 async def api_post_comments(
+    request: Request,
     post_url: str,
     sort: str = "confidence",
     limit: int = 10,
@@ -162,6 +191,23 @@ async def api_post_comments(
     """
     Extrahiert Kommentare aus einem bestimmten Reddit-Post.
     """
+    check_rapidapi_access(request)
+
+    if load_more:
+        settings = load_settings()
+        subscription = request.headers.get("x-rapidapi-subscription")
+        if settings.get("sandbox_mode", True) and not subscription:
+            subscription = request.headers.get("x-sandbox-subscription")
+            
+        if not subscription:
+            subscription = "Basic"
+            
+        if subscription.lower() == "basic":
+            raise HTTPException(
+                status_code=403,
+                detail="Das Feature 'load_more' ist fuer den Basic-Plan gesperrt. Bitte fuehre ein Upgrade durch."
+            )
+
     if sort not in ["confidence", "top", "new", "controversial", "old", "qa"]:
         raise HTTPException(status_code=400, detail="Ungültiger 'sort'-Wert. Erlaubt: confidence, top, new, controversial, old, qa")
     if limit < 1 or limit > 100:
@@ -472,6 +518,31 @@ async def admin_queue_settings(
     scrape_queue.cooldown_seconds = cooldown_seconds
     logger.info(f"Cooldown-Sekunden ueber Admin-UI auf {cooldown_seconds}s geaendert.")
     return RedirectResponse(url=f"/admin/queue?success=Pause+erfolgreich+auf+{cooldown_seconds}s+geaendert!", status_code=303)
+
+@app.get("/admin/settings", response_class=HTMLResponse)
+async def admin_settings_get(
+    request: Request,
+    username: str = Depends(verify_admin)
+):
+    settings = load_settings()
+    return templates.TemplateResponse("settings.html", {
+        "request": request,
+        "settings": settings
+    })
+
+@app.post("/admin/settings")
+async def admin_settings_post(
+    rapidapi_proxy_secret: str = Form(None),
+    sandbox_mode: bool = Form(False),
+    username: str = Depends(verify_admin)
+):
+    settings = {
+        "rapidapi_proxy_secret": (rapidapi_proxy_secret or "").strip(),
+        "sandbox_mode": sandbox_mode
+    }
+    save_settings(settings)
+    logger.info(f"System-Settings aktualisiert: Sandbox Mode = {sandbox_mode}")
+    return RedirectResponse(url="/admin/settings?success=Einstellungen+erfolgreich+gespeichert!", status_code=303)
 
 @app.get("/admin/logs/clear")
 async def admin_clear_logs(
