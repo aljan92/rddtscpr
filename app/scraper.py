@@ -2,6 +2,8 @@ import os
 import json
 import logging
 import httpx
+import asyncio
+import re
 from urllib.parse import urlparse
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
@@ -87,7 +89,32 @@ async def scrape_subreddit_posts_json(target: str, sort: str, timeframe: str, li
             
         return posts
 
-def extract_comments_recursive(children: list, include_replies: bool, is_root: bool = True, limit: int = None) -> list:
+async def fetch_more_children(link_id: str, children_ids: list[str], sort: str, proxy: str = None) -> list:
+    """Ruft nachgelagerte Kommentare über den /api/morechildren.json Endpunkt von Reddit ab."""
+    url = "https://www.reddit.com/api/morechildren.json"
+    params = {
+        "api_type": "json",
+        "link_id": link_id,
+        "children": ",".join(children_ids),
+        "sort": sort
+    }
+    cookies = get_stored_cookies()
+    proxies = {"all://": proxy} if proxy else None
+    
+    logger.info(f"MoreChildren: Rufe {len(children_ids)} IDs ab...")
+    try:
+        async with httpx.AsyncClient(headers=DEFAULT_HEADERS, cookies=cookies, proxies=proxies, timeout=15.0) as client:
+            response = await client.get(url, params=params)
+            if response.status_code == 200:
+                payload = response.json()
+                return payload.get("json", {}).get("data", {}).get("things", [])
+            else:
+                logger.warning(f"MoreChildren API lieferte Status Code {response.status_code}")
+    except Exception as e:
+        logger.error(f"Fehler bei fetch_more_children: {e}")
+    return []
+
+def extract_comments_recursive(children: list, include_replies: bool, is_root: bool = True, limit: int = None, more_nodes: list = None) -> list:
     """Extrahiert Kommentare und ggf. deren Replies rekursiv und flacht sie ab. Das Limit gilt nur für Hauptkommentare."""
     comments = []
     root_count = 0
@@ -95,10 +122,24 @@ def extract_comments_recursive(children: list, include_replies: bool, is_root: b
     for child in children:
         if is_root and limit is not None and root_count >= limit:
             break
-        if child.get("kind") != "t1":
+            
+        kind = child.get("kind")
+        data = child.get("data", {})
+        
+        # Falls es ein Platzhalter für "weitere Antworten" ist
+        if kind == "more" and include_replies and more_nodes is not None:
+            children_ids = data.get("children", [])
+            parent_id = data.get("parent_id", "")
+            if children_ids:
+                more_nodes.append({
+                    "parent_id": parent_id,
+                    "children": children_ids
+                })
             continue
             
-        data = child.get("data", {})
+        if kind != "t1":
+            continue
+            
         parent_id = data.get("parent_id", "")
         is_reply = not parent_id.startswith("t3_")
         
@@ -116,12 +157,12 @@ def extract_comments_recursive(children: list, include_replies: bool, is_root: b
             replies_payload = data.get("replies")
             if isinstance(replies_payload, dict):
                 reply_children = replies_payload.get("data", {}).get("children", [])
-                sub_comments = extract_comments_recursive(reply_children, include_replies, is_root=False)
+                sub_comments = extract_comments_recursive(reply_children, include_replies, is_root=False, limit=None, more_nodes=more_nodes)
                 comments.extend(sub_comments)
                 
     return comments
 
-async def scrape_post_comments_json(post_url: str, sort: str, limit: int, include_replies: bool = False, proxy: str = None) -> list:
+async def scrape_post_comments_json(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, proxy: str = None) -> list:
     """
     Holt Kommentare eines Posts über den .json-Trick.
     """
@@ -149,7 +190,42 @@ async def scrape_post_comments_json(post_url: str, sort: str, limit: int, includ
         comments_payload = payload[1]
         children = comments_payload.get("data", {}).get("children", [])
         
-        return extract_comments_recursive(children, include_replies, is_root=True, limit=limit)
+        more_nodes = []
+        comments = extract_comments_recursive(children, include_replies, is_root=True, limit=limit, more_nodes=more_nodes)
+        
+        # Falls load_more aktiv ist, laden wir diese nach
+        if include_replies and load_more and more_nodes:
+            # Post-ID aus URL extrahieren (z. B. t3_1u8hnzu)
+            post_id_match = re.search(r'/comments/([a-z0-9]+)/', post_url)
+            link_id = f"t3_{post_id_match.group(1)}" if post_id_match else ""
+            
+            if link_id:
+                max_requests = 10  # Schutzlimit vor unendlichen Requests und Bans
+                request_count = 0
+                queue = list(more_nodes)
+                
+                logger.info(f"LoadMore: Starte Nachladen von {len(queue)} Platzhaltern (Max {max_requests} Requests, 1.5s Delay)...")
+                
+                while queue and request_count < max_requests:
+                    node = queue.pop(0)
+                    children_ids = node["children"]
+                    
+                    # 1.5 Sekunden Wartezeit einhalten, um Rate-Limits zu schonen
+                    await asyncio.sleep(1.5)
+                    
+                    things = await fetch_more_children(link_id, children_ids, sort, proxy)
+                    request_count += 1
+                    
+                    if things:
+                        new_more_nodes = []
+                        # Die nachgeladenen things können wiederum more-Knoten enthalten
+                        new_comments = extract_comments_recursive(things, include_replies, is_root=False, limit=None, more_nodes=new_more_nodes)
+                        comments.extend(new_comments)
+                        
+                        if new_more_nodes:
+                            queue.extend(new_more_nodes)
+                            
+        return comments
 
 # =====================================================================
 # METODE 2: Playwright-Stealth (Robuster Browser-Fallback)
@@ -279,7 +355,7 @@ async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: s
             await context.close()
             await browser.close()
 
-async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, include_replies: bool = False, proxy: str = None) -> list:
+async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, proxy: str = None) -> list:
     """
     Holt Kommentare eines Posts über Playwright, indem die .json-URL im Browser geladen wird.
     """
@@ -305,7 +381,38 @@ async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, 
             comments_payload = payload[1]
             children = comments_payload.get("data", {}).get("children", [])
             
-            return extract_comments_recursive(children, include_replies, is_root=True, limit=limit)
+            more_nodes = []
+            comments = extract_comments_recursive(children, include_replies, is_root=True, limit=limit, more_nodes=more_nodes)
+            
+            if include_replies and load_more and more_nodes:
+                post_id_match = re.search(r'/comments/([a-z0-9]+)/', post_url)
+                link_id = f"t3_{post_id_match.group(1)}" if post_id_match else ""
+                
+                if link_id:
+                    max_requests = 10
+                    request_count = 0
+                    queue = list(more_nodes)
+                    
+                    logger.info(f"Playwright LoadMore: Starte Nachladen von {len(queue)} Platzhaltern...")
+                    
+                    while queue and request_count < max_requests:
+                        node = queue.pop(0)
+                        children_ids = node["children"]
+                        
+                        await asyncio.sleep(1.5)
+                        
+                        things = await fetch_more_children(link_id, children_ids, sort, proxy)
+                        request_count += 1
+                        
+                        if things:
+                            new_more_nodes = []
+                            new_comments = extract_comments_recursive(things, include_replies, is_root=False, limit=None, more_nodes=new_more_nodes)
+                            comments.extend(new_comments)
+                            
+                            if new_more_nodes:
+                                queue.extend(new_more_nodes)
+                                
+            return comments
         finally:
             await page.close()
             await context.close()
@@ -337,19 +444,19 @@ async def scrape_subreddit_playwright_fallback(target: str, sort: str, timeframe
     # Hilfsfunktion zur Entkopplung
     return await scrape_subreddit_posts_playwright(target, sort, timeframe, limit, proxy)
 
-async def get_post_comments(post_url: str, sort: str, limit: int, include_replies: bool = False, proxy: str = None) -> tuple[list, str]:
+async def get_post_comments(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, proxy: str = None) -> tuple[list, str]:
     """
     Versucht zuerst die JSON-Methode. Schlägt diese fehl, wird Playwright aufgerufen.
     Gibt (comments_list, "json"|"playwright") zurück.
     """
     try:
-        comments = await scrape_post_comments_json(post_url, sort, limit, include_replies, proxy)
+        comments = await scrape_post_comments_json(post_url, sort, limit, include_replies, load_more, proxy)
         logger.info("Kommentare erfolgreich via JSON-Trick geladen.")
         return comments, "json"
     except Exception as e:
         logger.warning(f"JSON-Trick für Kommentare fehlgeschlagen: {e}. Starte Playwright Fallback...")
         try:
-            comments = await scrape_post_comments_playwright(post_url, sort, limit, include_replies, proxy)
+            comments = await scrape_post_comments_playwright(post_url, sort, limit, include_replies, load_more, proxy)
             return comments, "playwright"
         except Exception as pe:
             logger.error(f"Playwright Fallback ebenfalls fehlgeschlagen: {pe}")
