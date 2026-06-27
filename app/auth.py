@@ -112,13 +112,15 @@ async def login_to_reddit(username, password, proxy_url=None):
         
         try:
             logger.info("Rufe Reddit Login-Seite auf...")
-            await page.goto("https://www.reddit.com/login", wait_until="networkidle", timeout=60000)
+            await page.goto("https://www.reddit.com/login", wait_until="domcontentloaded", timeout=45000)
             
-            # Warte kurz, falls Cookie-Zustimmungen geladen werden müssen
-            await page.wait_for_timeout(2000)
+            # Explizit auf das Erscheinen eines Eingabefeldes warten
+            try:
+                await page.wait_for_selector("input[name='username']", timeout=15000)
+            except Exception as e:
+                logger.warning(f"Username-Feld nicht gefunden, versuche fortzufahren. Details: {e}")
             
             # Eingabefelder ausfüllen
-            # Reddit nutzt oft shadow DOMs oder dynamische Komponenten, daher verschiedene Selektoren probieren
             username_filled = False
             for selector in ["input[name='username']", "#loginUsername", "#login-username"]:
                 try:
