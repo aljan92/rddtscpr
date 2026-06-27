@@ -100,9 +100,6 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
             logger.info("Rufe Reddit Login-Seite auf...")
             await page.goto("https://www.reddit.com/login", wait_until="domcontentloaded", timeout=45000)
             
-            # Warten, bis sich die Seite setzt
-            await page.wait_for_timeout(3000)
-            
             # Cookie-Banner schließen, falls vorhanden
             logger.info("Prüfe auf Cookie-Banner...")
             cookie_selectors = [
@@ -120,7 +117,7 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
                     if await page.is_visible(cookie_selector, timeout=2000):
                         await page.click(cookie_selector, force=True)
                         logger.info(f"Cookie-Banner geschlossen via: {cookie_selector}")
-                        await page.wait_for_timeout(1500)
+                        await page.wait_for_timeout(1000)
                         break
                 except Exception as ce:
                     logger.debug(f"Cookie-Selector {cookie_selector} fehlgeschlagen: {ce}")
@@ -135,7 +132,7 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
                         if await frame.is_visible(cookie_selector, timeout=500):
                             await frame.click(cookie_selector, force=True)
                             logger.info(f"Cookie-Banner im iframe geschlossen via: {cookie_selector}")
-                            await page.wait_for_timeout(1500)
+                            await page.wait_for_timeout(1000)
                             break
                     except Exception:
                         continue
@@ -146,35 +143,32 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
             except Exception as e:
                 logger.warning(f"Username-Feld nicht gefunden, versuche fortzufahren. Details: {e}")
             
-            # Eingabefelder mit "human-like" Verzögerung ausfüllen
-            username_selector = None
+            # Eingabefelder ausfüllen
+            username_filled = False
             for selector in ["input[name='username']", "#loginUsername", "#login-username"]:
-                if await page.is_visible(selector, timeout=2000):
-                    username_selector = selector
-                    break
-                    
-            if username_selector:
-                await page.click(username_selector)
-                await page.type(username_selector, username, delay=150)
-            else:
-                await page.type("input[placeholder*='Username']", username, delay=150)
+                try:
+                    if await page.is_visible(selector, timeout=2000):
+                        await page.fill(selector, username)
+                        username_filled = True
+                        break
+                except Exception:
+                    continue
+            
+            if not username_filled:
+                await page.fill("input[placeholder*='Username']", username)
                 
-            await page.wait_for_timeout(1000)
-                
-            password_selector = None
+            password_filled = False
             for selector in ["input[name='password']", "#loginPassword", "#login-password"]:
-                if await page.is_visible(selector, timeout=2000):
-                    password_selector = selector
-                    break
-                    
-            if password_selector:
-                await page.click(password_selector)
-                await page.type(password_selector, password, delay=150)
-            else:
-                await page.type("input[placeholder*='Password']", password, delay=150)
-                
-            # Künstliche Pause vor dem Abschicken
-            await page.wait_for_timeout(2000)
+                try:
+                    if await page.is_visible(selector, timeout=2000):
+                        await page.fill(selector, password)
+                        password_filled = True
+                        break
+                except Exception:
+                    continue
+            
+            if not password_filled:
+                await page.fill("input[placeholder*='Password']", password)
                 
             # Submit Button klicken
             submit_clicked = False
@@ -192,8 +186,7 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
                 await page.press("input[name='password']", "Enter")
             
             logger.info("Login-Daten abgeschickt. Warte auf Navigation...")
-            # Längeres Timeout, damit Reddit die Session aufbauen und das Cookie schreiben kann
-            await page.wait_for_timeout(12000)
+            await page.wait_for_timeout(8000)
             
             # Überprüfen, ob wir eingeloggt sind
             cookies = await context.cookies()
