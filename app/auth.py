@@ -116,15 +116,40 @@ async def login_to_reddit(username, password, proxy_url=None):
             
             # Cookie-Banner schließen, falls vorhanden
             logger.info("Prüfe auf Cookie-Banner...")
-            for cookie_selector in ["button:has-text('Alle akzeptieren')", "button:has-text('Accept all')", "button:has-text('Accept All')", "button[aria-label='Close']", ".ot-sdk-row button"]:
+            cookie_selectors = [
+                "#onetrust-accept-btn-handler",
+                "button:has-text('Alle akzeptieren')",
+                "button:has-text('Alle Akzeptieren')",
+                "button:has-text('Accept all')",
+                "button:has-text('Accept All')",
+                "button[aria-label='Close']",
+                ".ot-sdk-row button",
+                "#accept-recommendations"
+            ]
+            for cookie_selector in cookie_selectors:
                 try:
                     if await page.is_visible(cookie_selector, timeout=2000):
-                        await page.click(cookie_selector)
+                        await page.click(cookie_selector, force=True)
                         logger.info(f"Cookie-Banner geschlossen via: {cookie_selector}")
                         await page.wait_for_timeout(1000)
                         break
-                except Exception:
+                except Exception as ce:
+                    logger.debug(f"Cookie-Selector {cookie_selector} fehlgeschlagen: {ce}")
                     continue
+
+            # Fallback: In allen iframes nach dem Cookie-Banner suchen
+            for frame in page.frames:
+                if frame == page:
+                    continue
+                for cookie_selector in ["#onetrust-accept-btn-handler", "button:has-text('Alle akzeptieren')", "button:has-text('Accept all')", "button[aria-label='Close']"]:
+                    try:
+                        if await frame.is_visible(cookie_selector, timeout=500):
+                            await frame.click(cookie_selector, force=True)
+                            logger.info(f"Cookie-Banner im iframe geschlossen via: {cookie_selector}")
+                            await page.wait_for_timeout(1000)
+                            break
+                    except Exception:
+                        continue
 
             # Explizit auf das Erscheinen eines Eingabefeldes warten
             try:
@@ -164,20 +189,22 @@ async def login_to_reddit(username, password, proxy_url=None):
             submit_clicked = False
             for selector in ["button[type='submit']", "button:has-text('Log In')", "button:has-text('Anmelden')"]:
                 try:
-                    if await page.is_visible(selector, timeout=2000):
-                        await page.click(selector)
-                        submit_clicked = True
-                        break
+                    # Direkter Klickversuch mit force=True, um Overlays zu ignorieren
+                    await page.click(selector, force=True, timeout=2000)
+                    submit_clicked = True
+                    logger.info(f"Submit-Button geklickt via: {selector}")
+                    break
                 except Exception:
                     continue
             
             if not submit_clicked:
                 # Fallback: Enter auf Passwortfeld drücken
+                logger.info("Submit-Button nicht direkt klickbar, drücke Enter im Passwortfeld...")
                 await page.press("input[name='password']", "Enter")
             
             logger.info("Login-Daten abgeschickt. Warte auf Navigation...")
-            # Warte auf Navigation oder Timeout
-            await page.wait_for_timeout(5000)
+            # Etwas länger warten, damit der Server auf dem NAS die Session verarbeiten kann
+            await page.wait_for_timeout(8000)
             
             # Überprüfen, ob wir eingeloggt sind (z.B. Cookie vorhanden oder Umleitung erfolgt)
             cookies = await context.cookies()
