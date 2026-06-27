@@ -180,65 +180,80 @@ async def launch_browser(p, proxy_url=None):
     
     return browser, context, page
 
+async def get_page_json(page) -> dict:
+    """Extrahiert und parst das JSON aus dem geladenen Browser-Dokument."""
+    content = ""
+    try:
+        # Browser stellen JSON oft in einem <pre>-Tag dar
+        pre_elem = await page.query_selector("pre")
+        if pre_elem:
+            content = await pre_elem.inner_text()
+    except Exception:
+        pass
+        
+    if not content:
+        content = await page.evaluate("() => document.body.innerText")
+        
+    # Überprüfen, ob wir die Sicherheitsblock-Seite sehen
+    if "blocked by network security" in content.lower() or "deine anfrage wurde von der netzwerksicherheit blockiert" in content.lower():
+        raise Exception("Reddit blockiert die Verbindung (Netzwerksicherheits-Sperre). Proxy erforderlich.")
+        
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        # Wenn kein valides JSON da ist, Screenshot zur Diagnose machen
+        os.makedirs("./app/data", exist_ok=True)
+        await page.screenshot(path="./app/data/last_error.png")
+        # Teilauszug des Texts für die Fehlermeldung
+        preview = content[:200].replace('\n', ' ')
+        raise Exception(f"Ungültige JSON-Antwort von Reddit erhalten. Inhalt startet mit: '{preview}'")
+
 async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: str, limit: int, proxy: str = None) -> list:
     """
-    Holt Posts eines Subreddits über Playwright (Browser rendering).
+    Holt Posts eines Subreddits über Playwright, indem die .json-URL im Browser geladen wird.
     """
-    url = build_subreddit_url(target, sort, timeframe)
+    base_url = build_subreddit_url(target, sort, timeframe)
+    url_json = f"{base_url.rstrip('/')}.json"
+    
+    # Query Parameter
+    params = f"limit={limit}"
     if sort == "top" and timeframe:
-        url = f"{url}?t={timeframe}"
+        params += f"&t={timeframe}"
+    url = f"{url_json}?{params}"
         
-    logger.info(f"Playwright: Öffne URL {url}")
+    logger.info(f"Playwright: Öffne JSON-URL {url}")
     
     async with async_playwright() as p:
         browser, context, page = await launch_browser(p, proxy)
         try:
             # Zu Reddit navigieren
             await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            await page.wait_for_timeout(2000)
             
-            # Warten, bis mindestens ein Post geladen wird
-            try:
-                await page.wait_for_selector("shreddit-post", timeout=10000)
-            except Exception as e:
-                logger.warning(f"Playwright: shreddit-post nicht innerhalb des Timeouts geladen: {e}")
-                # Screenshot für Debugging-Zwecke speichern
-                os.makedirs("./app/data", exist_ok=True)
-                await page.screenshot(path="./app/data/last_error.png")
-            
-            # Subreddit-Posts über shreddit-post Komponenten holen
+            payload = await get_page_json(page)
             posts = []
-            post_elements = await page.query_selector_all("shreddit-post")
             
-            for elem in post_elements[:limit]:
-                try:
-                    title = await elem.get_attribute("post-title") or ""
-                    permalink = await elem.get_attribute("permalink") or ""
-                    author = await elem.get_attribute("author") or "[deleted]"
-                    score = await elem.get_attribute("score") or "0"
-                    comment_count = await elem.get_attribute("comment-count") or "0"
-                    
-                    description = ""
-                    text_elem = await elem.query_selector("[slot='text-body']")
-                    if text_elem:
-                        description = await text_elem.inner_text()
-                    
-                    posts.append({
-                        "title": title.strip(),
-                        "description": description.strip(),
-                        "post_url": f"https://www.reddit.com{permalink}" if permalink.startswith("/") else permalink,
-                        "upvotes": int(score) if score.isdigit() else 0,
-                        "comment_count": int(comment_count) if comment_count.isdigit() else 0,
-                        "author": author
-                    })
-                except Exception as inner_e:
-                    logger.warning(f"Fehler beim Parsen eines Posts: {inner_e}")
+            children = payload.get("data", {}).get("children", [])
+            for child in children[:limit]:
+                data = child.get("data", {})
+                if child.get("kind") != "t3":
                     continue
-            
+                    
+                posts.append({
+                    "title": data.get("title"),
+                    "description": data.get("selftext", ""),
+                    "post_url": f"https://www.reddit.com{data.get('permalink')}",
+                    "upvotes": data.get("ups", 0),
+                    "comment_count": data.get("num_comments", 0),
+                    "author": data.get("author", "[deleted]")
+                })
+                
             if not posts:
-                # Falls keine Posts gefunden wurden, machen wir einen Screenshot, um zu sehen, was das Problem war (z.B. Cookie Banner)
-                os.makedirs("./app/data", exist_ok=True)
-                await page.screenshot(path="./app/data/last_error.png")
-                logger.warning("Playwright: Keine Posts gefunden. Screenshot gespeichert.")
+                # Prüfen, ob das Listing absichtlich leer ist oder blockiert wurde
+                if "data" not in payload:
+                    os.makedirs("./app/data", exist_ok=True)
+                    await page.screenshot(path="./app/data/last_error.png")
+                    raise Exception("Keine Datenstruktur in der Reddit-Antwort gefunden.")
                     
             return posts
         finally:
@@ -248,55 +263,44 @@ async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: s
 
 async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, proxy: str = None) -> list:
     """
-    Holt Kommentare eines Posts über Playwright.
+    Holt Kommentare eines Posts über Playwright, indem die .json-URL im Browser geladen wird.
     """
     clean_post_url = clean_url(post_url)
-    url = f"{clean_post_url}?sort={sort}"
+    url = f"{clean_post_url.rstrip('/')}.json?sort={sort}&limit={limit}"
     
-    logger.info(f"Playwright: Öffne Kommentar-URL {url}")
+    logger.info(f"Playwright: Öffne JSON-URL {url}")
     
     async with async_playwright() as p:
         browser, context, page = await launch_browser(p, proxy)
         try:
             await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            await page.wait_for_timeout(2000)
             
-            try:
-                await page.wait_for_selector("shreddit-comment", timeout=10000)
-            except Exception as e:
-                logger.warning(f"Playwright: shreddit-comment nicht innerhalb des Timeouts geladen: {e}")
+            payload = await get_page_json(page)
+            
+            if not isinstance(payload, list) or len(payload) < 2:
                 os.makedirs("./app/data", exist_ok=True)
                 await page.screenshot(path="./app/data/last_error.png")
+                raise Exception("Unerwartetes JSON-Format von Reddit für Kommentare.")
+                
+            comments_payload = payload[1]
+            children = comments_payload.get("data", {}).get("children", [])
             
             comments = []
-            comment_elements = await page.query_selector_all("shreddit-comment")
-            
-            for elem in comment_elements[:limit]:
-                try:
-                    author = await elem.get_attribute("author") or "[deleted]"
-                    score = await elem.get_attribute("score") or "0"
-                    depth = await elem.get_attribute("depth") or "0"
-                    
-                    text_elem = await elem.query_selector("[id$='-post-rtjson-content']")
-                    comment_text = ""
-                    if text_elem:
-                        comment_text = await text_elem.inner_text()
-                    else:
-                        comment_text = await elem.inner_text()
-                    
-                    comments.append({
-                        "comment_text": comment_text.strip(),
-                        "upvotes": int(score) if score.isdigit() else 0,
-                        "author": author,
-                        "is_reply": int(depth) > 0 if depth.isdigit() else False
-                    })
-                except Exception as inner_e:
-                    logger.warning(f"Fehler beim Parsen eines Kommentars: {inner_e}")
+            for child in children[:limit]:
+                data = child.get("data", {})
+                if child.get("kind") != "t1":
                     continue
                     
-            if not comments:
-                os.makedirs("./app/data", exist_ok=True)
-                await page.screenshot(path="./app/data/last_error.png")
-                logger.warning("Playwright: Keine Kommentare gefunden. Screenshot gespeichert.")
+                parent_id = data.get("parent_id", "")
+                is_reply = not parent_id.startswith("t3_")
+                
+                comments.append({
+                    "comment_text": data.get("body", ""),
+                    "upvotes": data.get("ups", 0),
+                    "author": data.get("author", "[deleted]"),
+                    "is_reply": is_reply
+                })
                 
             return comments
         finally:
