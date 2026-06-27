@@ -97,6 +97,7 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
         await Stealth().apply_stealth_async(page)
         
         try:
+            logger.info(f"Starte Login-Versuch für User '{username}' (Passwort-Länge: {len(password)})")
             logger.info("Rufe Reddit Login-Seite auf...")
             await page.goto("https://www.reddit.com/login", wait_until="domcontentloaded", timeout=45000)
             
@@ -163,12 +164,14 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
                     if await btn.count() > 0 and await btn.is_visible(timeout=1000):
                         await page.fill(selector, username)
                         username_filled = True
+                        logger.info(f"Username ausgefüllt via: {selector}")
                         break
                 except Exception:
                     continue
             
             if not username_filled:
                 await page.fill("input[placeholder*='Username']", username)
+                logger.info("Username ausgefüllt via Fallback-Placeholder")
                 
             password_filled = False
             for selector in ["input[name='password']", "#loginPassword", "#login-password"]:
@@ -177,22 +180,26 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
                     if await btn.count() > 0 and await btn.is_visible(timeout=1000):
                         await page.fill(selector, password)
                         password_filled = True
+                        logger.info(f"Passwort ausgefüllt via: {selector}")
                         break
                 except Exception:
                     continue
             
             if not password_filled:
                 await page.fill("input[placeholder*='Password']", password)
+                logger.info("Passwort ausgefüllt via Fallback-Placeholder")
                 
             # Submit Button klicken
             submit_clicked = False
-            for selector in ["button[type='submit']", "button:has-text('Log In')", "button:has-text('Anmelden')"]:
+            # 'button.login' hinzugefügt, da Reddit Buttons oft diese Klasse haben und type="button" nutzen
+            for selector in ["button.login", "button[type='submit']", "button:has-text('Log In')", "button:has-text('Anmelden')"]:
                 try:
                     btn = page.locator(selector)
                     if await btn.count() > 0 and await btn.is_visible(timeout=1000):
+                        logger.info(f"Versuche Klick auf Submit-Button: {selector}")
                         await btn.click(force=True)
                         submit_clicked = True
-                        logger.info(f"Submit-Button geklickt via: {selector}")
+                        logger.info(f"Submit-Button erfolgreich geklickt via: {selector}")
                         break
                 except Exception as ex:
                     logger.debug(f"Klick auf {selector} fehlgeschlagen: {ex}")
