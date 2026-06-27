@@ -87,11 +87,13 @@ async def scrape_subreddit_posts_json(target: str, sort: str, timeframe: str, li
             
         return posts
 
-def extract_comments_recursive(children: list, limit: int, include_replies: bool) -> list:
-    """Extrahiert Kommentare und ggf. deren Replies rekursiv und flacht sie ab."""
+def extract_comments_recursive(children: list, include_replies: bool, is_root: bool = True, limit: int = None) -> list:
+    """Extrahiert Kommentare und ggf. deren Replies rekursiv und flacht sie ab. Das Limit gilt nur für Hauptkommentare."""
     comments = []
+    root_count = 0
+    
     for child in children:
-        if len(comments) >= limit:
+        if is_root and limit is not None and root_count >= limit:
             break
         if child.get("kind") != "t1":
             continue
@@ -107,11 +109,14 @@ def extract_comments_recursive(children: list, limit: int, include_replies: bool
             "is_reply": is_reply
         })
         
+        if is_root:
+            root_count += 1
+        
         if include_replies:
             replies_payload = data.get("replies")
             if isinstance(replies_payload, dict):
                 reply_children = replies_payload.get("data", {}).get("children", [])
-                sub_comments = extract_comments_recursive(reply_children, limit - len(comments), include_replies)
+                sub_comments = extract_comments_recursive(reply_children, include_replies, is_root=False)
                 comments.extend(sub_comments)
                 
     return comments
@@ -123,12 +128,7 @@ async def scrape_post_comments_json(post_url: str, sort: str, limit: int, includ
     clean_post_url = clean_url(post_url)
     json_url = f"{clean_post_url.rstrip('/')}.json"
     
-    # Wenn wir keine Replies wollen, limitieren wir direkt bei Reddit.
-    # Wenn wir Replies wollen, holen wir mehr, da wir sie sonst abschneiden könnten.
     params = {"sort": sort}
-    if not include_replies:
-        params["limit"] = limit
-        
     cookies = get_stored_cookies()
     proxies = {"all://": proxy} if proxy else None
     
@@ -149,7 +149,7 @@ async def scrape_post_comments_json(post_url: str, sort: str, limit: int, includ
         comments_payload = payload[1]
         children = comments_payload.get("data", {}).get("children", [])
         
-        return extract_comments_recursive(children, limit, include_replies)
+        return extract_comments_recursive(children, include_replies, is_root=True, limit=limit)
 
 # =====================================================================
 # METODE 2: Playwright-Stealth (Robuster Browser-Fallback)
@@ -284,10 +284,7 @@ async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, 
     Holt Kommentare eines Posts über Playwright, indem die .json-URL im Browser geladen wird.
     """
     clean_post_url = clean_url(post_url)
-    # Wenn wir keine Replies wollen, limitieren wir direkt.
     params = f"sort={sort}"
-    if not include_replies:
-        params += f"&limit={limit}"
     url = f"{clean_post_url.rstrip('/')}.json?{params}"
     
     logger.info(f"Playwright: Öffne JSON-URL {url}")
@@ -308,7 +305,7 @@ async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, 
             comments_payload = payload[1]
             children = comments_payload.get("data", {}).get("children", [])
             
-            return extract_comments_recursive(children, limit, include_replies)
+            return extract_comments_recursive(children, include_replies, is_root=True, limit=limit)
         finally:
             await page.close()
             await context.close()
