@@ -86,6 +86,7 @@
                                 <tr class="bg-reddit-dark/60 border-b border-reddit-border text-slate-400 text-xs font-semibold uppercase">
                                     <th class="p-3">Benutzername</th>
                                     <th class="p-3">Proxy</th>
+                                    <th class="p-3 text-center">Anfragen</th>
                                     <th class="p-3 text-center">Session</th>
                                     <th class="p-3 text-center">Status</th>
                                     <th class="p-3 text-right">Aktionen</th>
@@ -104,6 +105,9 @@
                                     </td>
                                     <td class="p-3 text-slate-400 font-mono text-xs max-w-[180px] truncate" title="Fallback: {{ acc.fallback_proxy_url }}">
                                         {{ acc.proxy_url }}
+                                    </td>
+                                    <td class="p-3 text-center font-semibold text-slate-300">
+                                        {{ acc.request_count }}
                                     </td>
                                     <td class="p-3 text-center">
                                         {% if acc.session_active %}
@@ -264,6 +268,7 @@
                             <th class="p-4">Endpunkt</th>
                             <th class="p-4">Target (Subreddit / Post)</th>
                             <th class="p-4">Methode</th>
+                            <th class="p-4">Account</th>
                             <th class="p-4">Dauer</th>
                             <th class="p-4">Status</th>
                         </tr>
@@ -289,6 +294,15 @@
                                     <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
                                         Playwright
                                     </span>
+                                {% endif %}
+                            </td>
+                            <td class="p-4">
+                                {% if log.reddit_username %}
+                                    <span class="inline-flex items-center text-xs px-2 py-0.5 rounded font-medium bg-slate-700/30 text-slate-300 border border-slate-700/50">
+                                        {{ log.reddit_username }}
+                                    </span>
+                                {% else %}
+                                    <span class="text-xs text-slate-500">-</span>
                                 {% endif %}
                             </td>
                             <td class="p-4 font-mono text-slate-300">{{ log.response_time_ms }} ms</td>

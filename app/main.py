@@ -78,7 +78,7 @@ async def api_subreddit_posts(
     proxy_used = "Dynamisch"
     
     try:
-        posts, method_used = await scrape_queue.enqueue(
+        posts, method_used, username_used = await scrape_queue.enqueue(
             action="subreddit",
             params={
                 "target": target,
@@ -97,7 +97,8 @@ async def api_subreddit_posts(
             status_code=200,
             response_time_ms=duration,
             method_used=method_used,
-            proxy_used=proxy_used
+            proxy_used=proxy_used,
+            reddit_username=username_used
         )
         db.add(log_entry)
         db.commit()
@@ -163,7 +164,7 @@ async def api_post_comments(
     proxy_used = "Dynamisch"
     
     try:
-        comments, method_used = await scrape_queue.enqueue(
+        comments, method_used, username_used = await scrape_queue.enqueue(
             action="comments",
             params={
                 "post_url": post_url,
@@ -182,7 +183,8 @@ async def api_post_comments(
             status_code=200,
             response_time_ms=duration,
             method_used=method_used,
-            proxy_used=proxy_used
+            proxy_used=proxy_used,
+            reddit_username=username_used
         )
         db.add(log_entry)
         db.commit()
@@ -265,6 +267,7 @@ async def admin_dashboard(
             "fallback_proxy_url": acc.fallback_proxy_url or "Kein Proxy",
             "is_active": acc.is_active,
             "failure_count": acc.failure_count,
+            "request_count": acc.request_count or 0,
             "last_used_at": acc.last_used_at.isoformat() if acc.last_used_at else "Nie",
             "session_active": session_info["active"],
             "session_message": session_info["message"],
@@ -294,23 +297,47 @@ async def admin_dashboard(
 
 def make_session_state_from_cookie(cookie_val: str) -> str:
     cookie_val = cookie_val.strip()
-    if cookie_val.startswith("reddit_session="):
-        cookie_val = cookie_val.split("=", 1)[1]
-    cookie_val = cookie_val.split(";")[0].strip()
+    cookies_list = []
     
-    state = {
-        "cookies": [
-            {
-                "name": "reddit_session",
-                "value": cookie_val,
+    # Falls der Benutzer den gesamten Cookie-String (z.B. "reddit_session=XXX; loid=YYY") eingefügt hat
+    if "=" in cookie_val:
+        parts = cookie_val.split(";")
+        for part in parts:
+            part = part.strip()
+            if not part or "=" not in part:
+                continue
+            name, val = part.split("=", 1)
+            name = name.strip()
+            val = val.strip()
+            # Anführungszeichen entfernen, falls vorhanden
+            if val.startswith('"') and val.endswith('"'):
+                val = val[1:-1]
+            cookies_list.append({
+                "name": name,
+                "value": val,
                 "domain": ".reddit.com",
                 "path": "/",
                 "expires": -1,
-                "httpOnly": True,
+                "httpOnly": name in ["reddit_session", "token_v2"],
                 "secure": True,
                 "sameSite": "Lax"
-            }
-        ]
+            })
+            
+    # Falls keine Cookies geparst wurden (z.B. nur der reine reddit_session Cookie-Wert kopiert wurde)
+    if not cookies_list:
+        cookies_list.append({
+            "name": "reddit_session",
+            "value": cookie_val,
+            "domain": ".reddit.com",
+            "path": "/",
+            "expires": -1,
+            "httpOnly": True,
+            "secure": True,
+            "sameSite": "Lax"
+        })
+        
+    state = {
+        "cookies": cookies_list
     }
     return json.dumps(state)
 

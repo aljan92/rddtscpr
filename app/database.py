@@ -29,6 +29,7 @@ class RedditAccount(Base):
     session_state = Column(Text, nullable=True)  # JSON Cookie State
     is_active = Column(Boolean, default=True)
     failure_count = Column(Integer, default=0)
+    request_count = Column(Integer, default=0)  # Anzahl erfolgreicher Anfragen
     last_used_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -43,11 +44,23 @@ class APIRequestLog(Base):
     response_time_ms = Column(Integer, nullable=False)
     method_used = Column(String(20), nullable=False)  # "json" or "playwright"
     proxy_used = Column(String(255), nullable=True)
+    reddit_username = Column(String(100), nullable=True)  # Welcher Account/Session genutzt wurde
     error_message = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    # Datenbank-Migration: Spalten hinzufügen falls nicht existent (SQLite & PostgreSQL tolerant)
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        try:
+            conn.execute(text("ALTER TABLE reddit_accounts ADD COLUMN request_count INTEGER DEFAULT 0"))
+        except Exception:
+            pass
+        try:
+            conn.execute(text("ALTER TABLE api_request_logs ADD COLUMN reddit_username VARCHAR(100)"))
+        except Exception:
+            pass
 
 def get_db():
     db = SessionLocal()

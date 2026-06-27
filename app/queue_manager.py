@@ -96,10 +96,11 @@ class ScrapeQueueManager:
                 # 4. Request ausführen
                 result = await self._execute_scrape(request.action, request.params, session_state, proxy_url)
                 
-                # Erfolg: Counter zurücksetzen und Ergebnis zurückgeben
+                # Erfolg: Counter zurücksetzen, Request-Zähler erhöhen und Ergebnis zurückgeben
                 account.failure_count = 0
+                account.request_count = (account.request_count or 0) + 1
                 db.commit()
-                request.future.set_result(result)
+                request.future.set_result((result[0], result[1], account.username))
                 
             except Exception as scrape_error:
                 logger.warning(f"Fehler beim Scraping mit Haupt-Proxy für Account '{account.username}': {scrape_error}")
@@ -110,8 +111,9 @@ class ScrapeQueueManager:
                     try:
                         result = await self._execute_scrape(request.action, request.params, session_state, account.fallback_proxy_url)
                         account.failure_count = 0
+                        account.request_count = (account.request_count or 0) + 1
                         db.commit()
-                        request.future.set_result(result)
+                        request.future.set_result((result[0], result[1], account.username))
                         return
                     except Exception as fallback_error:
                         logger.error(f"Fallback-Proxy für Account '{account.username}' ebenfalls fehlgeschlagen: {fallback_error}")
