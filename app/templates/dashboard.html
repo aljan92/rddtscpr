@@ -169,16 +169,33 @@
                                         </form>
                                     </td>
                                     <td class="p-3 text-right space-x-1.5 flex items-center justify-end">
+                                        <!-- Fehler-Screenshot (Dauerhaft eingeblendet) -->
                                         {% if acc.has_screenshot %}
-                                            <button onclick="showScreenshotModal({{ acc.id }}, '{{ acc.username }}')" class="p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-rose-400 hover:text-rose-300 transition-all duration-200" title="Fehler-Screenshot anzeigen">
+                                            <button onclick="showScreenshotModal({{ acc.id }}, '{{ acc.username }}')" 
+                                                    class="p-1.5 rounded-lg border hover:bg-slate-800 text-rose-400 hover:text-rose-300 transition-all duration-200 cursor-pointer {{ 'border-amber-400 text-amber-400 ring-2 ring-amber-400/20' if not acc.screenshot_viewed else 'border-reddit-border' }}" 
+                                                    title="Fehler-Screenshot anzeigen {% if not acc.screenshot_viewed %}(NEU!){% endif %}">
+                                                <i data-lucide="image" class="w-4 h-4"></i>
+                                            </button>
+                                        {% else %}
+                                            <button disabled 
+                                                    class="p-1.5 rounded-lg border border-reddit-border/30 text-slate-600 cursor-not-allowed opacity-40" 
+                                                    title="Kein Screenshot vorhanden">
                                                 <i data-lucide="image" class="w-4 h-4"></i>
                                             </button>
                                         {% endif %}
-                                        <button onclick="showEditModal({{ acc.id }}, '{{ acc.username }}', '{{ acc.proxy_url if acc.proxy_url != 'Kein Proxy' else '' }}', '{{ acc.fallback_proxy_url if acc.fallback_proxy_url != 'Kein Proxy' else '' }}')" class="p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-amber-400 hover:text-amber-300 transition-all duration-200" title="Konto bearbeiten">
+
+                                        <!-- Session prüfen -->
+                                        <form action="/admin/accounts/{{ acc.id }}/check" method="POST" class="inline check-form">
+                                            <button type="submit" class="check-btn p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 transition-all duration-200 cursor-pointer" title="Session testen & aktualisieren (Schnell-Check)">
+                                                <i data-lucide="shield-check" class="w-4 h-4 check-icon"></i>
+                                            </button>
+                                        </form>
+
+                                        <button onclick="showEditModal({{ acc.id }}, '{{ acc.username }}', '{{ acc.proxy_url if acc.proxy_url != 'Kein Proxy' else '' }}', '{{ acc.fallback_proxy_url if acc.fallback_proxy_url != 'Kein Proxy' else '' }}')" class="p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-amber-400 hover:text-amber-300 transition-all duration-200 cursor-pointer" title="Konto bearbeiten">
                                             <i data-lucide="edit-3" class="w-4 h-4"></i>
                                         </button>
                                         <form action="/admin/accounts/{{ acc.id }}/refresh" method="POST" class="inline refresh-form">
-                                            <button type="submit" class="refresh-btn p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-blue-400 hover:text-blue-300 transition-all duration-200" title="Session erneuern (Playwright Login)">
+                                            <button type="submit" class="refresh-btn p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-blue-400 hover:text-blue-300 transition-all duration-200 cursor-pointer" title="Session erneuern (Playwright Login)">
                                                 <i data-lucide="refresh-cw" class="w-4 h-4 refresh-icon"></i>
                                             </button>
                                         </form>
@@ -477,6 +494,16 @@
             form.addEventListener('submit', function() {
                 const btn = form.querySelector('.refresh-btn');
                 const icon = form.querySelector('.refresh-icon');
+                btn.disabled = true;
+                icon.classList.add('animate-spin');
+            });
+        });
+
+        // Lade-Animation für Session Check
+        document.querySelectorAll('.check-form').forEach(form => {
+            form.addEventListener('submit', function() {
+                const btn = form.querySelector('.check-btn');
+                const icon = form.querySelector('.check-icon');
                 btn.disabled = true;
                 icon.classList.add('animate-spin');
             });

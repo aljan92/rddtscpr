@@ -32,6 +32,7 @@ class RedditAccount(Base):
     request_count = Column(Integer, default=0)  # Anzahl erfolgreicher Anfragen
     last_used_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    screenshot_viewed = Column(Boolean, default=True)
 
 
 class APIRequestLog(Base):
@@ -59,6 +60,10 @@ def init_db():
             pass
         try:
             conn.execute(text("ALTER TABLE api_request_logs ADD COLUMN reddit_username VARCHAR(100)"))
+        except Exception:
+            pass
+        try:
+            conn.execute(text("ALTER TABLE reddit_accounts ADD COLUMN screenshot_viewed BOOLEAN DEFAULT TRUE"))
         except Exception:
             pass
 

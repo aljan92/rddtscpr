@@ -385,7 +385,8 @@ async def admin_dashboard(
             "session_active": session_info["active"],
             "session_message": session_info["message"],
             "session_expires": session_info.get("expires", "-"),
-            "has_screenshot": has_screenshot
+            "has_screenshot": has_screenshot,
+            "screenshot_viewed": getattr(acc, "screenshot_viewed", True)
         })
     
     stats = {
@@ -533,12 +534,40 @@ async def admin_refresh_session(
         acc.session_state = session_state_json
         acc.failure_count = 0
         acc.is_active = True
+        acc.screenshot_viewed = True
         db.commit()
         
         return RedirectResponse(url=f"/admin/dashboard?success=Session+fuer+Konto+{acc.username}+erfolgreich+erneuert!", status_code=303)
     except Exception as e:
         logger.error(f"Fehler bei Session-Refresh für {acc.username}: {e}")
+        acc.screenshot_viewed = False
+        db.commit()
         return RedirectResponse(url=f"/admin/dashboard?error=Refresh-Fehler+fuer+{acc.username}:+{str(e)}", status_code=303)
+
+@app.post("/admin/accounts/{account_id}/check")
+async def admin_check_account_session(
+    account_id: int,
+    admin_user: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    acc = db.query(RedditAccount).filter(RedditAccount.id == account_id).first()
+    if not acc:
+        return RedirectResponse(url="/admin/dashboard?error=Account+nicht+gefunden", status_code=303)
+        
+    try:
+        logger.info(f"Führe manuellen Session-Check für Account '{acc.username}' durch...")
+        from app.queue_manager import scrape_queue
+        
+        # Session-Check ausführen (prüft r/popular.json, erneuert Cookies, und führt Auto-Login aus falls abgelaufen)
+        await scrape_queue._refresh_account_session(db, acc)
+        
+        if acc.is_active and acc.session_state:
+            return RedirectResponse(url=f"/admin/dashboard?success=Session-Check+fuer+Konto+{acc.username}+erfolgreich!+Session+ist+aktiv+und+Cookies+wurden+aktualisiert.", status_code=303)
+        else:
+            return RedirectResponse(url=f"/admin/dashboard?error=Session-Check+fuer+Konto+{acc.username}+fehlgeschlagen.+Konto+ist+inaktiv+oder+nicht+eingeloggt.", status_code=303)
+    except Exception as e:
+        logger.error(f"Fehler bei Session-Check für {acc.username}: {e}")
+        return RedirectResponse(url=f"/admin/dashboard?error=Fehler+beim+Session-Check+fuer+{acc.username}:+{str(e)}", status_code=303)
 @app.get("/admin/playground", response_class=HTMLResponse)
 async def admin_playground(
     request: Request,
@@ -634,6 +663,8 @@ async def admin_account_screenshot(
         raise HTTPException(status_code=404, detail="Account nicht gefunden.")
     screenshot_path = f"./app/data/last_error_{acc.username}.png"
     if os.path.exists(screenshot_path):
+        acc.screenshot_viewed = True
+        db.commit()
         return FileResponse(screenshot_path)
     raise HTTPException(status_code=404, detail="Kein Fehler-Screenshot für dieses Konto vorhanden.")
 
