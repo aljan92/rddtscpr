@@ -410,10 +410,10 @@ async def admin_dashboard(
     )
 
 def make_session_state_from_cookie(cookie_val: str) -> str:
+    """Legacy: Aus einem einzelnen Cookie-String (name=val; ...) einen Session-State bauen."""
     cookie_val = cookie_val.strip()
     cookies_list = []
     
-    # Falls der Benutzer den gesamten Cookie-String (z.B. "reddit_session=XXX; loid=YYY") eingefügt hat
     if "=" in cookie_val:
         parts = cookie_val.split(";")
         for part in parts:
@@ -423,7 +423,6 @@ def make_session_state_from_cookie(cookie_val: str) -> str:
             name, val = part.split("=", 1)
             name = name.strip()
             val = val.strip()
-            # Anführungszeichen entfernen, falls vorhanden
             if val.startswith('"') and val.endswith('"'):
                 val = val[1:-1]
             cookies_list.append({
@@ -437,7 +436,6 @@ def make_session_state_from_cookie(cookie_val: str) -> str:
                 "sameSite": "Lax"
             })
             
-    # Falls keine Cookies geparst wurden (z.B. nur der reine reddit_session Cookie-Wert kopiert wurde)
     if not cookies_list:
         cookies_list.append({
             "name": "reddit_session",
@@ -450,10 +448,40 @@ def make_session_state_from_cookie(cookie_val: str) -> str:
             "sameSite": "Lax"
         })
         
-    state = {
-        "cookies": cookies_list
+    return json.dumps({"cookies": cookies_list})
+
+def make_session_state_from_fields(
+    reddit_session: str = None,
+    loid: str = None,
+    session_tracker: str = None,
+    csrf_token: str = None,
+    token_v2: str = None
+) -> str | None:
+    """Aus bis zu 5 einzelnen Cookie-Feldern einen vollständigen Session-State bauen."""
+    httponly_names = {"reddit_session", "token_v2"}
+    field_map = {
+        "reddit_session": reddit_session,
+        "loid": loid,
+        "session_tracker": session_tracker,
+        "csrf_token": csrf_token,
+        "token_v2": token_v2,
     }
-    return json.dumps(state)
+    cookies_list = []
+    for name, val in field_map.items():
+        if val and val.strip():
+            cookies_list.append({
+                "name": name,
+                "value": val.strip(),
+                "domain": ".reddit.com",
+                "path": "/",
+                "expires": -1,
+                "httpOnly": name in httponly_names,
+                "secure": True,
+                "sameSite": "Lax"
+            })
+    if not cookies_list:
+        return None
+    return json.dumps({"cookies": cookies_list})
 
 @app.post("/admin/accounts/add")
 async def admin_add_account(
@@ -461,14 +489,22 @@ async def admin_add_account(
     password: str = Form(...),
     proxy_url: str = Form(None),
     fallback_proxy_url: str = Form(None),
-    reddit_session: str = Form(None),
+    cookie_reddit_session: str = Form(None),
+    cookie_loid: str = Form(None),
+    cookie_session_tracker: str = Form(None),
+    cookie_csrf_token: str = Form(None),
+    cookie_token_v2: str = Form(None),
     admin_user: str = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
     try:
-        session_state = None
-        if reddit_session and reddit_session.strip():
-            session_state = make_session_state_from_cookie(reddit_session)
+        session_state = make_session_state_from_fields(
+            reddit_session=cookie_reddit_session,
+            loid=cookie_loid,
+            session_tracker=cookie_session_tracker,
+            csrf_token=cookie_csrf_token,
+            token_v2=cookie_token_v2
+        )
             
         new_acc = RedditAccount(
             username=username.strip(),
@@ -675,7 +711,11 @@ async def admin_edit_account(
     password: str = Form(None),
     proxy_url: str = Form(None),
     fallback_proxy_url: str = Form(None),
-    reddit_session: str = Form(None),
+    cookie_reddit_session: str = Form(None),
+    cookie_loid: str = Form(None),
+    cookie_session_tracker: str = Form(None),
+    cookie_csrf_token: str = Form(None),
+    cookie_token_v2: str = Form(None),
     admin_user: str = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
@@ -690,8 +730,15 @@ async def admin_edit_account(
         acc.proxy_url = proxy_url.strip() if proxy_url else None
         acc.fallback_proxy_url = fallback_proxy_url.strip() if fallback_proxy_url else None
         
-        if reddit_session and reddit_session.strip():
-            acc.session_state = make_session_state_from_cookie(reddit_session)
+        new_state = make_session_state_from_fields(
+            reddit_session=cookie_reddit_session,
+            loid=cookie_loid,
+            session_tracker=cookie_session_tracker,
+            csrf_token=cookie_csrf_token,
+            token_v2=cookie_token_v2
+        )
+        if new_state:
+            acc.session_state = new_state
             acc.is_active = True
             acc.failure_count = 0
             try:
