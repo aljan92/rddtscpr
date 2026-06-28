@@ -139,6 +139,13 @@ class ScrapeQueueManager:
             except Exception as scrape_error:
                 logger.warning(f"Fehler beim Scraping mit Haupt-Proxy für Account '{account.username}': {scrape_error}")
                 
+                # Wenn Session-Fehler vorliegt, Session-State leeren
+                err_str = str(scrape_error).lower()
+                if "403" in err_str or "401" in err_str or "forbidden" in err_str or "unauthorized" in err_str or "session" in err_str:
+                    logger.warning(f"Session/Auth-Fehler auf Account '{account.username}' erkannt. Session wird zurückgesetzt.")
+                    account.session_state = None
+                    db.commit()
+                
                 # Fallback-Proxy versuchen, falls definiert
                 if account.fallback_proxy_url:
                     logger.info(f"Probiere Fallback-Proxy für Account '{account.username}'...")
@@ -159,6 +166,10 @@ class ScrapeQueueManager:
                         return
                     except Exception as fallback_error:
                         logger.error(f"Fallback-Proxy für Account '{account.username}' ebenfalls fehlgeschlagen: {fallback_error}")
+                        fb_err_str = str(fallback_error).lower()
+                        if "403" in fb_err_str or "401" in fb_err_str or "forbidden" in fb_err_str or "unauthorized" in fb_err_str or "session" in fb_err_str:
+                            account.session_state = None
+                            db.commit()
                 
                 # Wenn auch der Fallback-Proxy fehlschlägt (oder kein Fallback definiert war):
                 # Account Fehler zählen
@@ -323,11 +334,15 @@ class ScrapeQueueManager:
                     db.commit()
                 elif response.status_code in [401, 403]:
                     logger.warning(f"Session-Refresh: Session für '{account.username}' ist abgelaufen (HTTP {response.status_code}). Starte Auto-Login...")
+                    account.session_state = None
+                    db.commit()
                     await self._auto_login_account(db, account)
                 else:
                     logger.warning(f"Session-Refresh: Unerwarteter Status Code {response.status_code} für '{account.username}'. Keine Aktion.")
         except Exception as e:
             logger.error(f"Session-Refresh: Fehler beim Verbindungstest für '{account.username}': {e}. Starte Auto-Login...")
+            account.session_state = None
+            db.commit()
             await self._auto_login_account(db, account)
 
     async def _auto_login_account(self, db: Session, account: RedditAccount):
@@ -346,6 +361,7 @@ class ScrapeQueueManager:
             logger.info(f"Auto-Login: Login für '{account.username}' erfolgreich abgeschlossen.")
         except Exception as e:
             logger.error(f"Auto-Login: Fehler bei Login für '{account.username}': {e}")
+            account.session_state = None
             account.failure_count += 1
             if account.failure_count >= 3:
                 account.is_active = False

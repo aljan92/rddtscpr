@@ -143,13 +143,21 @@
                                         {{ acc.request_count }}
                                     </td>
                                     <td class="p-3 text-center">
-                                        {% if acc.session_active %}
+                                        {% if not acc.is_active %}
+                                            <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20" title="Konto ist inaktiv oder wegen Fehlern gesperrt">
+                                                Gesperrt/Inaktiv
+                                            </span>
+                                        {% elif acc.failure_count > 0 %}
+                                            <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20" title="Letzter Versuch schlug fehl. Fehlversuche: {{ acc.failure_count }}">
+                                                Fehlerhaft
+                                            </span>
+                                        {% elif acc.session_active %}
                                             <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="Gültig bis: {{ acc.session_expires }}">
                                                 Aktiv
                                             </span>
                                         {% else %}
                                             <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20" title="{{ acc.session_message }}">
-                                                Inaktiv
+                                                Keine Session
                                             </span>
                                         {% endif %}
                                     </td>
