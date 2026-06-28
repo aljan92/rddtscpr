@@ -26,6 +26,7 @@ class ScrapeQueueManager:
     def __init__(self):
         self.queue = asyncio.Queue()
         self.worker_task = None
+        self.refresh_task = None
         self._running = False
         self.cooldown_seconds = 3.0  # Mindestabstand zwischen Zugriffen desselben Accounts
         self.active_requests = {}  # id -> ScrapeRequest
@@ -34,7 +35,8 @@ class ScrapeQueueManager:
         if not self._running:
             self._running = True
             self.worker_task = asyncio.create_task(self._worker_loop())
-            logger.info("ScrapeQueueManager erfolgreich gestartet.")
+            self.refresh_task = asyncio.create_task(self._session_refresh_loop())
+            logger.info("ScrapeQueueManager erfolgreich gestartet (inkl. Session-Refresh Task).")
 
     async def stop(self):
         self._running = False
@@ -44,7 +46,13 @@ class ScrapeQueueManager:
                 await self.worker_task
             except asyncio.CancelledError:
                 pass
-            logger.info("ScrapeQueueManager beendet.")
+        if self.refresh_task:
+            self.refresh_task.cancel()
+            try:
+                await self.refresh_task
+            except asyncio.CancelledError:
+                pass
+        logger.info("ScrapeQueueManager beendet.")
 
     async def enqueue(self, action: str, params: dict, is_playground: bool = False) -> tuple[list, str, str]:
         """Reiht einen Request ein und wartet asynchron auf das Ergebnis."""
@@ -112,14 +120,16 @@ class ScrapeQueueManager:
             try:
                 # 4. Request ausführen
                 request.status = "Scraping"
-                result = await self._execute_scrape(request.action, request.params, session_state, proxy_url)
+                data, method_used, new_session = await self._execute_scrape(request.action, request.params, session_state, proxy_url)
                 
                 # Erfolg: Counter zurücksetzen, Request-Zähler erhöhen und Ergebnis zurückgeben
                 account.failure_count = 0
+                if new_session:
+                    account.session_state = new_session
                 if not request.is_playground:
                     account.request_count = (account.request_count or 0) + 1
                 db.commit()
-                request.future.set_result((result[0], result[1], account.username))
+                request.future.set_result((data, method_used, account.username))
                 
             except ValueError as val_error:
                 # Client-Fehler (z.B. Subreddit existiert nicht). Kein Failover/Sperren des Accounts!
@@ -134,12 +144,14 @@ class ScrapeQueueManager:
                     logger.info(f"Probiere Fallback-Proxy für Account '{account.username}'...")
                     try:
                         request.status = "Scraping"
-                        result = await self._execute_scrape(request.action, request.params, session_state, account.fallback_proxy_url)
+                        data, method_used, new_session = await self._execute_scrape(request.action, request.params, session_state, account.fallback_proxy_url)
                         account.failure_count = 0
+                        if new_session:
+                            account.session_state = new_session
                         if not request.is_playground:
                             account.request_count = (account.request_count or 0) + 1
                         db.commit()
-                        request.future.set_result((result[0], result[1], account.username))
+                        request.future.set_result((data, method_used, account.username))
                         return
                     except ValueError as val_error:
                         logger.warning(f"Client-Fehler beim Scraping über Fallback-Proxy: {val_error}")
@@ -197,7 +209,7 @@ class ScrapeQueueManager:
                 logger.info(f"Cooldown für Account '{account.username}': Warte {wait_time:.2f}s...")
                 await asyncio.sleep(wait_time)
 
-    async def _execute_scrape(self, action: str, params: dict, session_state: str, proxy_url: str) -> tuple[list, str]:
+    async def _execute_scrape(self, action: str, params: dict, session_state: str, proxy_url: str) -> tuple[list, str, str]:
         """Führt das eigentliche Scraping-Modul aus."""
         if action == "subreddit":
             return await get_subreddit_posts(
@@ -253,6 +265,92 @@ class ScrapeQueueManager:
             },
             "requests": items
         }
+
+    async def _session_refresh_loop(self):
+        logger.info("Session-Refresh-Loop gestartet.")
+        await asyncio.sleep(10)
+        
+        while self._running:
+            try:
+                db = SessionLocal()
+                accounts = db.query(RedditAccount).filter(RedditAccount.is_active == True).all()
+                logger.info(f"Session-Refresh: Prüfe {len(accounts)} aktive Accounts...")
+                
+                for account in accounts:
+                    if not self._running:
+                        break
+                    try:
+                        await self._refresh_account_session(db, account)
+                    except Exception as e:
+                        logger.error(f"Fehler beim Refresh des Accounts '{account.username}': {e}")
+                    await asyncio.sleep(5)
+                    
+                db.close()
+            except Exception as e:
+                logger.error(f"Fehler im Session-Refresh-Loop: {e}")
+                
+            for _ in range(180):
+                if not self._running:
+                    break
+                await asyncio.sleep(10)
+
+    async def _refresh_account_session(self, db: Session, account: RedditAccount):
+        from app.auth import get_account_cookies, update_session_state_with_cookies
+        import httpx
+        
+        cookies = get_account_cookies(account.session_state)
+        if not cookies:
+            logger.info(f"Session-Refresh: Keine Cookies für {account.username} vorhanden. Starte Auto-Login...")
+            await self._auto_login_account(db, account)
+            return
+            
+        test_url = "https://www.reddit.com/r/popular.json"
+        proxies = {"all://": account.proxy_url} if account.proxy_url else None
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json"
+        }
+        
+        try:
+            async with httpx.AsyncClient(headers=headers, cookies=cookies, proxies=proxies, timeout=15.0, follow_redirects=True) as client:
+                response = await client.get(test_url, params={"limit": 1})
+                
+                if response.status_code == 200:
+                    logger.info(f"Session-Refresh: Session für '{account.username}' ist GÜLTIG. Cookies werden aktualisiert...")
+                    new_state = update_session_state_with_cookies(account.session_state, client.cookies)
+                    account.session_state = new_state
+                    account.failure_count = 0
+                    db.commit()
+                elif response.status_code in [401, 403]:
+                    logger.warning(f"Session-Refresh: Session für '{account.username}' ist abgelaufen (HTTP {response.status_code}). Starte Auto-Login...")
+                    await self._auto_login_account(db, account)
+                else:
+                    logger.warning(f"Session-Refresh: Unerwarteter Status Code {response.status_code} für '{account.username}'. Keine Aktion.")
+        except Exception as e:
+            logger.error(f"Session-Refresh: Fehler beim Verbindungstest für '{account.username}': {e}. Starte Auto-Login...")
+            await self._auto_login_account(db, account)
+
+    async def _auto_login_account(self, db: Session, account: RedditAccount):
+        from app.auth import login_to_reddit
+        try:
+            logger.info(f"Auto-Login: Führe Login-Refresh für Account '{account.username}' durch...")
+            session_state_json = await login_to_reddit(
+                username=account.username,
+                password=account.password,
+                proxy_url=account.proxy_url
+            )
+            account.session_state = session_state_json
+            account.failure_count = 0
+            account.is_active = True
+            db.commit()
+            logger.info(f"Auto-Login: Login für '{account.username}' erfolgreich abgeschlossen.")
+        except Exception as e:
+            logger.error(f"Auto-Login: Fehler bei Login für '{account.username}': {e}")
+            account.failure_count += 1
+            if account.failure_count >= 3:
+                account.is_active = False
+                logger.error(f"Auto-Login: Account '{account.username}' wurde nach 3 aufeinanderfolgenden Fehlern DEAKTIVIERT.")
+            db.commit()
 
 # Globaler Singleton-Manager
 scrape_queue = ScrapeQueueManager()

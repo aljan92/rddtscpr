@@ -55,6 +55,52 @@ def get_account_cookies(session_state_str: str) -> dict:
         logger.error(f"Fehler beim Laden der gespeicherten Cookies: {e}")
         return {}
 
+def update_session_state_with_cookies(old_state_str: str, httpx_cookies) -> str:
+    """
+    Nimmt den alten Playwright JSON-Session-State und verschmilzt ihn mit den neuen
+    Cookies, die durch einen httpx-Request (Set-Cookie) empfangen wurden.
+    """
+    if not old_state_str:
+        state = {"cookies": [], "origins": []}
+    else:
+        try:
+            state = json.loads(old_state_str)
+            if "cookies" not in state:
+                state["cookies"] = []
+        except Exception:
+            state = {"cookies": [], "origins": []}
+            
+    existing_cookies = {c["name"]: c for c in state["cookies"]}
+    
+    for cookie in httpx_cookies.jar:
+        # Nur reddit-relevante Cookies übernehmen
+        if "reddit.com" not in cookie.domain:
+            continue
+            
+        cookie_data = {
+            "name": cookie.name,
+            "value": cookie.value,
+            "domain": cookie.domain,
+            "path": cookie.path,
+        }
+        if cookie.expires:
+            cookie_data["expires"] = cookie.expires
+            
+        if cookie.name in existing_cookies:
+            old_cookie = existing_cookies[cookie.name]
+            cookie_data["httpOnly"] = old_cookie.get("httpOnly", True)
+            cookie_data["secure"] = old_cookie.get("secure", True)
+            cookie_data["sameSite"] = old_cookie.get("sameSite", "Lax")
+        else:
+            cookie_data["httpOnly"] = True
+            cookie_data["secure"] = True
+            cookie_data["sameSite"] = "Lax"
+            
+        existing_cookies[cookie.name] = cookie_data
+        
+    state["cookies"] = list(existing_cookies.values())
+    return json.dumps(state)
+
 async def login_to_reddit(username, password, proxy_url=None) -> str:
     """
     Startet Playwright, loggt sich bei Reddit ein und gibt den Session-State als JSON-String zurück.

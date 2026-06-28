@@ -7,7 +7,7 @@ import re
 from urllib.parse import urlparse
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
-from app.auth import get_account_cookies
+from app.auth import get_account_cookies, update_session_state_with_cookies
 
 logger = logging.getLogger("rddtscpr.scraper")
 
@@ -85,7 +85,7 @@ def detect_media(data: dict) -> tuple[str, str]:
 # METOHDE 1: Der .json-Trick (Schnell & Ressourcenschonend)
 # =====================================================================
 
-async def scrape_subreddit_posts_json(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None) -> list:
+async def scrape_subreddit_posts_json(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None) -> tuple[list, str]:
     """
     Holt Posts eines Subreddits über den .json-Trick.
     """
@@ -142,7 +142,8 @@ async def scrape_subreddit_posts_json(target: str, sort: str, timeframe: str, li
                 "author": data.get("author", "[deleted]")
             })
             
-        return posts
+        new_session_state = update_session_state_with_cookies(session_state, client.cookies)
+        return posts, new_session_state
 
 async def fetch_more_children(link_id: str, children_ids: list[str], sort: str, session_state: str = None, proxy_url: str = None) -> list:
     """Ruft nachgelagerte Kommentare über den /api/morechildren.json Endpunkt von Reddit ab."""
@@ -217,7 +218,7 @@ def extract_comments_recursive(children: list, include_replies: bool, is_root: b
                 
     return comments
 
-async def scrape_post_comments_json(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, session_state: str = None, proxy_url: str = None) -> list:
+async def scrape_post_comments_json(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, session_state: str = None, proxy_url: str = None) -> tuple[list, str]:
     """
     Holt Kommentare eines Posts über den .json-Trick.
     """
@@ -282,7 +283,8 @@ async def scrape_post_comments_json(post_url: str, sort: str, limit: int, includ
                         if new_more_nodes:
                             queue.extend(new_more_nodes)
                             
-        return comments
+        new_session_state = update_session_state_with_cookies(session_state, client.cookies)
+        return comments, new_session_state
 
 # =====================================================================
 # METODE 2: Playwright-Stealth (Robuster Browser-Fallback)
@@ -370,7 +372,7 @@ async def get_page_json(page) -> dict:
         preview = content[:200].replace('\n', ' ')
         raise Exception(f"Ungültige JSON-Antwort von Reddit erhalten. Inhalt startet mit: '{preview}'")
 
-async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None) -> list:
+async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None) -> tuple[list, str]:
     """
     Holt Posts eines Subreddits über Playwright, indem die .json-URL im Browser geladen wird.
     """
@@ -428,13 +430,15 @@ async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: s
                     await page.screenshot(path="./app/data/last_error.png")
                     raise Exception("Keine Datenstruktur in der Reddit-Antwort gefunden.")
                     
-            return posts
+            new_state = await context.storage_state()
+            new_session_state = json.dumps(new_state)
+            return posts, new_session_state
         finally:
             await page.close()
             await context.close()
             await browser.close()
 
-async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, session_state: str = None, proxy_url: str = None) -> list:
+async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, session_state: str = None, proxy_url: str = None) -> tuple[list, str]:
     """
     Holt Kommentare eines Posts über Playwright, indem die .json-URL im Browser geladen wird.
     """
@@ -491,7 +495,9 @@ async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, 
                             if new_more_nodes:
                                 queue.extend(new_more_nodes)
                                 
-            return comments
+            new_state = await context.storage_state()
+            new_session_state = json.dumps(new_state)
+            return comments, new_session_state
         finally:
             await page.close()
             await context.close()
@@ -501,42 +507,42 @@ async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, 
 # INTEGRATION & FAILLBACK ROUTING
 # =====================================================================
 
-async def get_subreddit_posts(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None) -> tuple[list, str]:
+async def get_subreddit_posts(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None) -> tuple[list, str, str]:
     """
     Versucht zuerst die JSON-Methode. Schlägt diese fehl, wird Playwright aufgerufen.
-    Gibt (posts_list, "json"|"playwright") zurück.
+    Gibt (posts_list, "json"|"playwright", updated_session_state) zurück.
     """
     try:
-        posts = await scrape_subreddit_posts_json(target, sort, timeframe, limit, session_state, proxy_url)
+        posts, new_session = await scrape_subreddit_posts_json(target, sort, timeframe, limit, session_state, proxy_url)
         logger.info("Subreddit-Posts erfolgreich via JSON-Trick geladen.")
-        return posts, "json"
+        return posts, "json", new_session
     except Exception as e:
         logger.warning(f"JSON-Trick für Subreddit fehlgeschlagen: {e}. Starte Playwright Fallback...")
         try:
-            posts = await scrape_subreddit_playwright_fallback(target, sort, timeframe, limit, session_state, proxy_url)
-            return posts, "playwright"
+            posts, new_session = await scrape_subreddit_playwright_fallback(target, sort, timeframe, limit, session_state, proxy_url)
+            return posts, "playwright", new_session
         except Exception as pe:
             logger.error(f"Playwright Fallback ebenfalls fehlgeschlagen: {pe}")
             raise pe
 
-async def scrape_subreddit_playwright_fallback(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None) -> list:
+async def scrape_subreddit_playwright_fallback(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None) -> tuple[list, str]:
     # Hilfsfunktion zur Entkopplung
     return await scrape_subreddit_posts_playwright(target, sort, timeframe, limit, session_state, proxy_url)
 
-async def get_post_comments(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, session_state: str = None, proxy_url: str = None) -> tuple[list, str]:
+async def get_post_comments(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, session_state: str = None, proxy_url: str = None) -> tuple[list, str, str]:
     """
     Versucht zuerst die JSON-Methode. Schlägt diese fehl, wird Playwright aufgerufen.
-    Gibt (comments_list, "json"|"playwright") zurück.
+    Gibt (comments_list, "json"|"playwright", updated_session_state) zurück.
     """
     try:
-        comments = await scrape_post_comments_json(post_url, sort, limit, include_replies, load_more, session_state, proxy_url)
+        comments, new_session = await scrape_post_comments_json(post_url, sort, limit, include_replies, load_more, session_state, proxy_url)
         logger.info("Kommentare erfolgreich via JSON-Trick geladen.")
-        return comments, "json"
+        return comments, "json", new_session
     except Exception as e:
         logger.warning(f"JSON-Trick für Kommentare fehlgeschlagen: {e}. Starte Playwright Fallback...")
         try:
-            comments = await scrape_post_comments_playwright(post_url, sort, limit, include_replies, load_more, session_state, proxy_url)
-            return comments, "playwright"
+            comments, new_session = await scrape_post_comments_playwright(post_url, sort, limit, include_replies, load_more, session_state, proxy_url)
+            return comments, "playwright", new_session
         except Exception as pe:
             logger.error(f"Playwright Fallback ebenfalls fehlgeschlagen: {pe}")
             raise pe
