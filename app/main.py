@@ -2,7 +2,7 @@ import os
 import json
 import time
 import logging
-from fastapi import FastAPI, Depends, HTTPException, status, Request, Form
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
@@ -498,7 +498,8 @@ async def admin_add_account(
     cookie_csrf_token: str = Form(None),
     cookie_token_v2: str = Form(None),
     admin_user: str = Depends(verify_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = None
 ):
     try:
         session_state = make_session_state_from_fields(
@@ -519,7 +520,21 @@ async def admin_add_account(
         )
         db.add(new_acc)
         db.commit()
-        return RedirectResponse(url="/admin/dashboard?success=Reddit-Account+erfolgreich+hinzugefuegt!", status_code=303)
+
+        # Warmlauf im Hintergrund triggern, falls Cookies angegeben wurden
+        if session_state and background_tasks:
+            # Da die Queue ein async Refresh hat, verpacken wir das in ein Task-Wrapper
+            async def run_warmup():
+                from app.database import SessionLocal
+                with SessionLocal() as s:
+                    # Frischen Account-State laden
+                    from app.database import RedditAccount as RA
+                    db_acc = s.query(RA).filter(RA.username == new_acc.username).first()
+                    if db_acc:
+                        await scrape_queue._refresh_account_session(s, db_acc)
+            background_tasks.add_task(run_warmup)
+
+        return RedirectResponse(url="/admin/dashboard?success=Reddit-Account+erfolgreich+hinzugefuegt!+Warmlauf-Prozess+wurde+gestartet.", status_code=303)
     except Exception as e:
         db.rollback()
         return RedirectResponse(url=f"/admin/dashboard?error=Fehler+beim+Hinzufuegen:+{str(e)}", status_code=303)
@@ -761,7 +776,8 @@ async def admin_edit_account(
     cookie_csrf_token: str = Form(None),
     cookie_token_v2: str = Form(None),
     admin_user: str = Depends(verify_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = None
 ):
     acc = db.query(RedditAccount).filter(RedditAccount.id == account_id).first()
     if not acc:
@@ -794,7 +810,19 @@ async def admin_edit_account(
                 pass
                 
         db.commit()
-        return RedirectResponse(url=f"/admin/dashboard?success=Konto+{acc.username}+erfolgreich+aktualisiert!", status_code=303)
+
+        # Warmlauf im Hintergrund triggern, falls neue Cookies angegeben wurden
+        if new_state and background_tasks:
+            async def run_warmup():
+                from app.database import SessionLocal
+                with SessionLocal() as s:
+                    from app.database import RedditAccount as RA
+                    db_acc = s.query(RA).filter(RA.id == account_id).first()
+                    if db_acc:
+                        await scrape_queue._refresh_account_session(s, db_acc)
+            background_tasks.add_task(run_warmup)
+
+        return RedirectResponse(url=f"/admin/dashboard?success=Konto+{acc.username}+erfolgreich+aktualisiert!+Warmlauf-Prozess+wurde+gestartet.", status_code=303)
     except Exception as e:
         db.rollback()
         return RedirectResponse(url=f"/admin/dashboard?error=Fehler+beim+Aktualisieren+von+{acc.username}:+{str(e)}", status_code=303)

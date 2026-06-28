@@ -139,12 +139,10 @@ class ScrapeQueueManager:
             except Exception as scrape_error:
                 logger.warning(f"Fehler beim Scraping mit Haupt-Proxy für Account '{account.username}': {scrape_error}")
                 
-                # Wenn Session-Fehler vorliegt, Session-State leeren
-                err_str = str(scrape_error).lower()
-                if "403" in err_str or "401" in err_str or "forbidden" in err_str or "unauthorized" in err_str or "session" in err_str:
-                    logger.warning(f"Session/Auth-Fehler auf Account '{account.username}' erkannt. Session wird zurückgesetzt.")
-                    account.session_state = None
-                    db.commit()
+                # Wenn Session-Fehler vorliegt, leeren wir die Session NICHT automatisch, um manuelle Cookies zu schonen.
+                # Wir erhöhen stattdessen den failure_count des Kontos.
+                account.failure_count = (account.failure_count or 0) + 1
+                db.commit()
                 
                 # Fallback-Proxy versuchen, falls definiert
                 if account.fallback_proxy_url:
@@ -322,8 +320,14 @@ class ScrapeQueueManager:
             "Accept": "application/json"
         }
         
+        # Cookies explizit für beide Domains (.reddit.com und www.reddit.com) in den CookieJar laden
+        jar = httpx.Cookies()
+        for name, value in cookies.items():
+            jar.set(name, value, domain=".reddit.com", path="/")
+            jar.set(name, value, domain="www.reddit.com", path="/")
+        
         try:
-            async with httpx.AsyncClient(headers=headers, cookies=cookies, proxies=proxies, timeout=15.0, follow_redirects=True) as client:
+            async with httpx.AsyncClient(headers=headers, cookies=jar, proxies=proxies, timeout=15.0, follow_redirects=True) as client:
                 response = await client.get(test_url, params={"limit": 1})
                 
                 if response.status_code == 200:
@@ -333,17 +337,11 @@ class ScrapeQueueManager:
                     account.failure_count = 0
                     db.commit()
                 elif response.status_code in [401, 403]:
-                    logger.warning(f"Session-Refresh: Session für '{account.username}' ist abgelaufen (HTTP {response.status_code}). Starte Auto-Login...")
-                    account.session_state = None
-                    db.commit()
-                    await self._auto_login_account(db, account)
+                    logger.warning(f"Session-Refresh: Session für '{account.username}' lieferte HTTP {response.status_code}. Wir lassen die Cookies unangetastet, um sie nicht zu löschen.")
                 else:
                     logger.warning(f"Session-Refresh: Unerwarteter Status Code {response.status_code} für '{account.username}'. Keine Aktion.")
         except Exception as e:
-            logger.error(f"Session-Refresh: Fehler beim Verbindungstest für '{account.username}': {e}. Starte Auto-Login...")
-            account.session_state = None
-            db.commit()
-            await self._auto_login_account(db, account)
+            logger.error(f"Session-Refresh: Fehler beim Verbindungstest für '{account.username}': {e}. Wir behalten die Cookies trotzdem.")
 
     async def _auto_login_account(self, db: Session, account: RedditAccount):
         from app.auth import login_to_reddit

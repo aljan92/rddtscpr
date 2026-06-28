@@ -40,6 +40,7 @@ def get_session_info_from_state(session_state_str: str) -> dict:
 def get_account_cookies(session_state_str: str) -> dict:
     """
     Konvertiert den JSON-Session-State aus der DB in ein httpx-kompatibles Cookie-Format.
+    Verteilt die Cookies sowohl auf .reddit.com als auch www.reddit.com, um Domain-Mismatches vorzubeugen.
     """
     if not session_state_str:
         return {}
@@ -47,9 +48,9 @@ def get_account_cookies(session_state_str: str) -> dict:
     try:
         state = json.loads(session_state_str)
         cookies_dict = {}
+        # Wir befüllen die Cookies für beide Domains, falls zutreffend
         for cookie in state.get("cookies", []):
-            if "reddit.com" in cookie["domain"]:
-                cookies_dict[cookie["name"]] = cookie["value"]
+            cookies_dict[cookie["name"]] = cookie["value"]
         return cookies_dict
     except Exception as e:
         logger.error(f"Fehler beim Laden der gespeicherten Cookies: {e}")
