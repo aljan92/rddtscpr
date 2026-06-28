@@ -191,6 +191,19 @@
                                             </button>
                                         </form>
 
+                                        <!-- Proxy prüfen -->
+                                        {% if acc.proxy_url and acc.proxy_url != 'Kein Proxy' %}
+                                        <form action="/admin/accounts/{{ acc.id }}/check_proxy" method="POST" class="inline proxy-check-form">
+                                            <button type="submit" class="proxy-check-btn p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-violet-400 hover:text-violet-300 transition-all duration-200 cursor-pointer" title="Proxy-Verbindung & IP prüfen">
+                                                <i data-lucide="globe" class="w-4 h-4 proxy-check-icon"></i>
+                                            </button>
+                                        </form>
+                                        {% else %}
+                                        <button disabled class="p-1.5 rounded-lg border border-reddit-border/30 text-slate-600 cursor-not-allowed opacity-40" title="Kein Proxy für dieses Konto konfiguriert">
+                                            <i data-lucide="globe" class="w-4 h-4"></i>
+                                        </button>
+                                        {% endif %}
+
                                         <button onclick="showEditModal({{ acc.id }}, '{{ acc.username }}', '{{ acc.proxy_url if acc.proxy_url != 'Kein Proxy' else '' }}', '{{ acc.fallback_proxy_url if acc.fallback_proxy_url != 'Kein Proxy' else '' }}')" class="p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-amber-400 hover:text-amber-300 transition-all duration-200 cursor-pointer" title="Konto bearbeiten">
                                             <i data-lucide="edit-3" class="w-4 h-4"></i>
                                         </button>
@@ -556,6 +569,16 @@
             form.addEventListener('submit', function() {
                 const btn = form.querySelector('.check-btn');
                 const icon = form.querySelector('.check-icon');
+                btn.disabled = true;
+                icon.classList.add('animate-spin');
+            });
+        });
+
+        // Lade-Animation für Proxy Check
+        document.querySelectorAll('.proxy-check-form').forEach(form => {
+            form.addEventListener('submit', function() {
+                const btn = form.querySelector('.proxy-check-btn');
+                const icon = form.querySelector('.proxy-check-icon');
                 btn.disabled = true;
                 icon.classList.add('animate-spin');
             });

@@ -604,6 +604,46 @@ async def admin_check_account_session(
     except Exception as e:
         logger.error(f"Fehler bei Session-Check für {acc.username}: {e}")
         return RedirectResponse(url=f"/admin/dashboard?error=Fehler+beim+Session-Check+fuer+{acc.username}:+{str(e)}", status_code=303)
+
+@app.post("/admin/accounts/{account_id}/check_proxy")
+async def admin_check_account_proxy(
+    account_id: int,
+    admin_user: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    acc = db.query(RedditAccount).filter(RedditAccount.id == account_id).first()
+    if not acc:
+        return RedirectResponse(url="/admin/dashboard?error=Account+nicht+gefunden", status_code=303)
+        
+    if not acc.proxy_url:
+        return RedirectResponse(url=f"/admin/dashboard?error=Konto+{acc.username}+hat+keinen+Proxy+konfiguriert.+Anfragen+laufen+direkt+ueber+den+VPS.", status_code=303)
+        
+    try:
+        import httpx
+        logger.info(f"Prüfe Proxy-Verbindung für Account '{acc.username}' ({acc.proxy_url})...")
+        
+        # Testen mit dem Haupt-Proxy
+        proxies = {
+            "http://": acc.proxy_url,
+            "https://": acc.proxy_url
+        }
+        
+        async with httpx.AsyncClient(proxies=proxies, timeout=10.0) as client:
+            # Wir rufen einen externen IP-Spiegel auf
+            res = await client.get("https://httpbin.org/ip")
+            if res.status_code == 200:
+                data = res.json()
+                returned_ip = data.get("origin", "Unbekannt")
+                logger.info(f"Proxy-Check erfolgreich. Erkannte IP: {returned_ip}")
+                return RedirectResponse(url=f"/admin/dashboard?success=Proxy-Verbindung+erfolgreich!+Deine+Proxy-IP+ist:+{returned_ip}", status_code=303)
+            else:
+                return RedirectResponse(url=f"/admin/dashboard?error=Proxy+antwortete+mit+Statuscode+{res.status_code}", status_code=303)
+                
+    except Exception as e:
+        logger.error(f"Fehler beim Prüfen des Proxys für {acc.username}: {e}")
+        # Falls Fallback vorhanden, darauf hinweisen
+        fallback_info = " (Ein Fallback-Proxy ist konfiguriert, wurde aber nicht getestet)" if acc.fallback_proxy_url else ""
+        return RedirectResponse(url=f"/admin/dashboard?error=Proxy-Verbindung+fehlgeschlagen:+{str(e)}{fallback_info}", status_code=303)
 @app.get("/admin/playground", response_class=HTMLResponse)
 async def admin_playground(
     request: Request,
