@@ -90,7 +90,7 @@ def check_rapidapi_access(request: Request):
         if not (is_sub_valid or is_secret_valid):
             raise HTTPException(
                 status_code=403,
-                detail="Access denied. In Sandbox Mode, a valid test subscription (Basic/Pro/Ultra) or the Proxy Secret is required."
+                detail="Invalid X-RapidAPI-Proxy-Secret header."
             )
     else:
         if not is_secret_valid:
