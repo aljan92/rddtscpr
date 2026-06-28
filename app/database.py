@@ -51,21 +51,23 @@ class APIRequestLog(Base):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
-    # Datenbank-Migration: Spalten hinzufügen falls nicht existent (SQLite & PostgreSQL tolerant)
+    # Datenbank-Migration: Spalten hinzufügen (einzelne Transaktionen pro Spalte für PostgreSQL-Toleranz)
     from sqlalchemy import text
-    with engine.begin() as conn:
-        try:
+    try:
+        with engine.begin() as conn:
             conn.execute(text("ALTER TABLE reddit_accounts ADD COLUMN request_count INTEGER DEFAULT 0"))
-        except Exception:
-            pass
-        try:
+    except Exception:
+        pass
+    try:
+        with engine.begin() as conn:
             conn.execute(text("ALTER TABLE api_request_logs ADD COLUMN reddit_username VARCHAR(100)"))
-        except Exception:
-            pass
-        try:
+    except Exception:
+        pass
+    try:
+        with engine.begin() as conn:
             conn.execute(text("ALTER TABLE reddit_accounts ADD COLUMN screenshot_viewed BOOLEAN DEFAULT TRUE"))
-        except Exception:
-            pass
+    except Exception:
+        pass
 
 def get_db():
     db = SessionLocal()
