@@ -357,12 +357,14 @@ class ScrapeQueueManager:
             account.session_state = session_state_json
             account.failure_count = 0
             account.is_active = True
+            account.screenshot_viewed = True
             db.commit()
             logger.info(f"Auto-Login: Login für '{account.username}' erfolgreich abgeschlossen.")
         except Exception as e:
             logger.error(f"Auto-Login: Fehler bei Login für '{account.username}': {e}")
             account.session_state = None
             account.failure_count += 1
+            account.screenshot_viewed = False
             if account.failure_count >= 3:
                 account.is_active = False
                 logger.error(f"Auto-Login: Account '{account.username}' wurde nach 3 aufeinanderfolgenden Fehlern DEAKTIVIERT.")
