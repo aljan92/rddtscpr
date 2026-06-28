@@ -260,9 +260,20 @@
                             <div class="border border-reddit-border/40 rounded-xl p-4 space-y-3 bg-black/20">
                                 <p class="text-xs font-semibold text-slate-300 flex items-center space-x-2">
                                     <i data-lucide="cookie" class="w-3.5 h-3.5 text-yellow-400"></i>
-                                    <span>Browser-Cookies (optional – aus F12 → Application → Cookies kopieren)</span>
+                                    <span>Browser-Cookies (optional – einzeln ausfüllen ODER als kompletten String einfügen)</span>
                                 </p>
-                                <div class="grid grid-cols-1 gap-2">
+                                <div class="space-y-3">
+                                    <div class="space-y-1">
+                                        <label class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Kompletter Cookie-String (name=value; loid=...)</label>
+                                        <input type="text" name="cookie_combined" placeholder="reddit_session=eyJ...; loid=...; session_tracker=..." class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                                    </div>
+                                    <div class="relative flex py-1 items-center">
+                                        <div class="flex-grow border-t border-reddit-border/30"></div>
+                                        <span class="flex-shrink mx-4 text-[10px] text-slate-500 uppercase font-semibold">ODER EINZELN</span>
+                                        <div class="flex-grow border-t border-reddit-border/30"></div>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 gap-2 pt-1">
                                     <div class="flex items-center space-x-2">
                                         <span class="text-xs text-slate-500 w-32 shrink-0 font-mono">reddit_session</span>
                                         <input type="text" name="cookie_reddit_session" placeholder="eyJhbGci..." class="flex-1 bg-reddit-dark border border-reddit-border rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange transition-all font-mono">
@@ -486,6 +497,17 @@
                         <i data-lucide="cookie" class="w-3.5 h-3.5 text-yellow-400"></i>
                         <span>Browser-Cookies (leer lassen = keine Änderung)</span>
                     </p>
+                    <div class="space-y-3">
+                        <div class="space-y-1">
+                            <label class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Kompletter Cookie-String (name=value; loid=...)</label>
+                            <input type="text" name="cookie_combined" placeholder="reddit_session=eyJ...; loid=...; session_tracker=..." class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                        </div>
+                        <div class="relative flex py-1 items-center">
+                            <div class="flex-grow border-t border-reddit-border/30"></div>
+                            <span class="flex-shrink mx-4 text-[10px] text-slate-500 uppercase font-semibold">ODER EINZELN</span>
+                            <div class="flex-grow border-t border-reddit-border/30"></div>
+                        </div>
+                    </div>
                     <div class="space-y-2">
                         <div class="flex items-center space-x-2">
                             <span class="text-xs text-slate-500 w-32 shrink-0 font-mono">reddit_session</span>
@@ -634,6 +656,8 @@
             fallbackProxyInput.value = fallbackProxyUrl === 'Kein Proxy' ? '' : fallbackProxyUrl;
             // Cookie-Felder immer leer lassen (leer = keine Änderung)
             form.querySelectorAll('input[name^="cookie_"]').forEach(el => el.value = '');
+            const combinedInput = form.querySelector('input[name="cookie_combined"]');
+            if (combinedInput) combinedInput.value = '';
             
             modal.classList.remove('hidden');
             modal.classList.add('flex');

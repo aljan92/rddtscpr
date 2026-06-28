@@ -497,18 +497,24 @@ async def admin_add_account(
     cookie_session_tracker: str = Form(None),
     cookie_csrf_token: str = Form(None),
     cookie_token_v2: str = Form(None),
+    cookie_combined: str = Form(None),
     admin_user: str = Depends(verify_admin),
     db: Session = Depends(get_db),
     background_tasks: BackgroundTasks = None
 ):
     try:
-        session_state = make_session_state_from_fields(
-            reddit_session=cookie_reddit_session,
-            loid=cookie_loid,
-            session_tracker=cookie_session_tracker,
-            csrf_token=cookie_csrf_token,
-            token_v2=cookie_token_v2
-        )
+        session_state = None
+        # Falls der Benutzer den kombinierten Cookie-String benutzt hat
+        if cookie_combined and cookie_combined.strip():
+            session_state = make_session_state_from_cookie(cookie_combined)
+        else:
+            session_state = make_session_state_from_fields(
+                reddit_session=cookie_reddit_session,
+                loid=cookie_loid,
+                session_tracker=cookie_session_tracker,
+                csrf_token=cookie_csrf_token,
+                token_v2=cookie_token_v2
+            )
             
         new_acc = RedditAccount(
             username=username.strip(),
@@ -775,6 +781,7 @@ async def admin_edit_account(
     cookie_session_tracker: str = Form(None),
     cookie_csrf_token: str = Form(None),
     cookie_token_v2: str = Form(None),
+    cookie_combined: str = Form(None),
     admin_user: str = Depends(verify_admin),
     db: Session = Depends(get_db),
     background_tasks: BackgroundTasks = None
@@ -790,13 +797,17 @@ async def admin_edit_account(
         acc.proxy_url = proxy_url.strip() if proxy_url else None
         acc.fallback_proxy_url = fallback_proxy_url.strip() if fallback_proxy_url else None
         
-        new_state = make_session_state_from_fields(
-            reddit_session=cookie_reddit_session,
-            loid=cookie_loid,
-            session_tracker=cookie_session_tracker,
-            csrf_token=cookie_csrf_token,
-            token_v2=cookie_token_v2
-        )
+        new_state = None
+        if cookie_combined and cookie_combined.strip():
+            new_state = make_session_state_from_cookie(cookie_combined)
+        else:
+            new_state = make_session_state_from_fields(
+                reddit_session=cookie_reddit_session,
+                loid=cookie_loid,
+                session_tracker=cookie_session_tracker,
+                csrf_token=cookie_csrf_token,
+                token_v2=cookie_token_v2
+            )
         if new_state:
             acc.session_state = new_state
             acc.is_active = True
