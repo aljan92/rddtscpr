@@ -79,9 +79,12 @@ def check_rapidapi_access(request: Request):
     settings = load_settings()
     sandbox_mode = settings.get("sandbox_mode", True)
     secret = settings.get("rapidapi_proxy_secret", "")
-    
+    # Falls kein Proxy-Secret konfiguriert ist, lassen wir alle Anfragen durchgehen
+    if not secret or not secret.strip():
+        return
+
     request_secret = request.headers.get("x-rapidapi-proxy-secret")
-    is_secret_valid = bool(secret and request_secret == secret)
+    is_secret_valid = bool(request_secret == secret)
     
     if sandbox_mode:
         sub = request.headers.get("x-sandbox-subscription") or request.headers.get("x-rapidapi-subscription")
@@ -649,7 +652,8 @@ async def admin_playground(
     request: Request,
     username: str = Depends(verify_admin)
 ):
-    return templates.TemplateResponse("playground.html", {"request": request})
+    settings = load_settings()
+    return templates.TemplateResponse("playground.html", {"request": request, "settings": settings})
 
 @app.get("/admin/queue", response_class=HTMLResponse)
 async def admin_queue(

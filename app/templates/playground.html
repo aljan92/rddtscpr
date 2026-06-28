@@ -315,7 +315,13 @@
             const startTime = performance.now();
 
             try {
-                const response = await fetch(url);
+                const headers = {};
+                const proxySecret = "{{ settings.rapidapi_proxy_secret }}";
+                if (proxySecret && proxySecret.trim() !== "") {
+                    headers["X-RapidAPI-Proxy-Secret"] = proxySecret;
+                }
+
+                const response = await fetch(url, { headers: headers });
                 const status = response.status;
                 const data = await response.json();
                 const duration = Math.round(performance.now() - startTime);
