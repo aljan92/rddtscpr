@@ -604,13 +604,13 @@
             const usernameInput = document.getElementById('edit-username');
             const proxyInput = document.getElementById('edit-proxy');
             const fallbackProxyInput = document.getElementById('edit-fallback-proxy');
-            const sessionInput = document.getElementById('edit-session');
             
             form.action = `/admin/accounts/${accountId}/edit`;
             usernameInput.value = username;
             proxyInput.value = proxyUrl === 'Kein Proxy' ? '' : proxyUrl;
             fallbackProxyInput.value = fallbackProxyUrl === 'Kein Proxy' ? '' : fallbackProxyUrl;
-            sessionInput.value = '';
+            // Cookie-Felder immer leer lassen (leer = keine Änderung)
+            form.querySelectorAll('input[name^="cookie_"]').forEach(el => el.value = '');
             
             modal.classList.remove('hidden');
             modal.classList.add('flex');
