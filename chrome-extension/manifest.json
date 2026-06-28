@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Reddit Session Token Copier",
+  "version": "1.0.0",
+  "description": "Kopiert die benötigten Reddit-Session-Tokens (reddit_session, loid, session_tracker, csrf_token, token_v2) mit einem Klick in die Zwischenablage.",
+  "permissions": [
+    "cookies",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "*://*.reddit.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
