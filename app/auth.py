@@ -310,7 +310,19 @@ async def login_to_reddit(username, password, proxy_url=None) -> str:
                 await page.screenshot(path=debug_screenshot_path)
                 logger.error(f"Login fehlgeschlagen. Screenshot unter {debug_screenshot_path} gespeichert.")
                 raise Exception("Anmeldung fehlgeschlagen: Kein Session-Cookie erhalten und keine Umleitung festgestellt.")
-                
+        
+        except Exception as e:
+            # Ausnahme-Screenshot speichern bei Timeout oder anderem Fehler
+            try:
+                import os
+                os.makedirs("./app/data", exist_ok=True)
+                debug_screenshot_path = f"./app/data/last_error_{username}.png"
+                await page.screenshot(path=debug_screenshot_path)
+                logger.error(f"Ausnahme bei Login aufgetreten. Screenshot unter {debug_screenshot_path} gespeichert. Fehler: {e}")
+            except Exception as se:
+                logger.error(f"Fehler beim Erstellen des Ausnahme-Screenshots: {se}")
+            raise e
+        
         finally:
             await page.close()
             await context.close()

@@ -164,10 +164,7 @@ class ScrapeQueueManager:
                         return
                     except Exception as fallback_error:
                         logger.error(f"Fallback-Proxy für Account '{account.username}' ebenfalls fehlgeschlagen: {fallback_error}")
-                        fb_err_str = str(fallback_error).lower()
-                        if "403" in fb_err_str or "401" in fb_err_str or "forbidden" in fb_err_str or "unauthorized" in fb_err_str or "session" in fb_err_str:
-                            account.session_state = None
-                            db.commit()
+                        # Session-Cookies werden nicht automatisch gelöscht, um manuelle Cookies zu schonen.
                 
                 # Wenn auch der Fallback-Proxy fehlschlägt (oder kein Fallback definiert war):
                 # failure_count wurde bereits oben (Zeile 144) erhöht, hier nur prüfen ob Schwelle erreicht
@@ -364,12 +361,12 @@ class ScrapeQueueManager:
             return True
         except Exception as e:
             logger.error(f"Auto-Login: Fehler bei Login für '{account.username}': {e}")
-            account.session_state = None
+            # Cookies bei Login-Fehlern nicht löschen, um temporäre Fehler zu tolerieren
             account.failure_count += 1
             account.screenshot_viewed = False
             if account.failure_count >= 3:
                 account.is_active = False
-                logger.error(f"Auto-Login: Account '{account.username}' wurde nach 3 aufeinanderfolgenden Fehlern DEAKTIVIERT.")
+                logger.error(f"Auto-Login: Account '{account.username}' wurde nach {account.failure_count} aufeinanderfolgenden Fehlern DEAKTIVIERT.")
             db.commit()
             return False
 
