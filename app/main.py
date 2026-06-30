@@ -217,7 +217,22 @@ async def api_subreddit_posts(
             },
             "data": posts
         }
-        
+    except asyncio.CancelledError:
+        duration = int((time.time() - start_time) * 1000)
+        logger.warning(f"Request abgebrochen/Timeout bei Subreddit-Scraping ({target}) nach {duration}ms")
+        if not is_playground:
+            log_entry = APIRequestLog(
+                endpoint="/v1/subreddit-posts",
+                target=target,
+                status_code=499,
+                response_time_ms=duration,
+                method_used=method_used,
+                proxy_used=proxy_used,
+                error_message="Request wurde vom Client abgebrochen oder lief in ein Timeout."
+            )
+            db.add(log_entry)
+            db.commit()
+        raise
     except ValueError as ve:
         duration = int((time.time() - start_time) * 1000)
         error_msg = str(ve)
@@ -346,7 +361,22 @@ async def api_post_comments(
             },
             "data": comments
         }
-        
+    except asyncio.CancelledError:
+        duration = int((time.time() - start_time) * 1000)
+        logger.warning(f"Request abgebrochen/Timeout bei Kommentar-Scraping ({post_url}) nach {duration}ms")
+        if not is_playground:
+            log_entry = APIRequestLog(
+                endpoint="/v1/post-comments",
+                target=post_url,
+                status_code=499,
+                response_time_ms=duration,
+                method_used=method_used,
+                proxy_used=proxy_used,
+                error_message="Request wurde vom Client abgebrochen oder lief in ein Timeout."
+            )
+            db.add(log_entry)
+            db.commit()
+        raise
     except ValueError as ve:
         duration = int((time.time() - start_time) * 1000)
         error_msg = str(ve)

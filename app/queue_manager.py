@@ -92,6 +92,10 @@ class ScrapeQueueManager:
         await self.queue.put((10, time.time(), request))
         try:
             return await future
+        except asyncio.CancelledError:
+            future.cancel()
+            logger.info(f"Request {request.id} wurde abgebrochen (Client-Timeout/Disconnect). Future storniert.")
+            raise
         finally:
             self.active_requests.pop(request.id, None)
 
