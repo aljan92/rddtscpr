@@ -97,6 +97,12 @@ class ScrapeQueueManager:
                 await asyncio.sleep(1)
                 continue
             
+            # 1. Check: Wurde das Request/Future bereits abgebrochen oder abgeschlossen?
+            if request.future.done():
+                logger.info(f"Request {request.id} wurde bereits abgebrochen/beendet. Überspringe Verarbeitung.")
+                self.queue.task_done()
+                continue
+            
             db = SessionLocal()
             try:
                 # Einen Account suchen, der aktiv, nicht beschäftigt und nicht für diese Anfrage ausgeschlossen ist
@@ -109,7 +115,11 @@ class ScrapeQueueManager:
                     async def put_back():
                         await asyncio.sleep(0.5)
                         if self._running:
-                            await self.queue.put((priority, timestamp, request))
+                            # 2. Check: Bevor wir es wieder einreihen, prüfen wir, ob es mittlerweile abgebrochen wurde
+                            if not request.future.done():
+                                await self.queue.put((priority, timestamp, request))
+                            else:
+                                logger.info(f"Request {request.id} wurde während des Wartens auf einen freien Account abgebrochen.")
                     asyncio.create_task(put_back())
                     self.queue.task_done()
                     continue
@@ -129,11 +139,17 @@ class ScrapeQueueManager:
     async def _process_request_concurrent(self, request: ScrapeRequest, account_id: int, current_priority: int):
         db = SessionLocal()
         try:
+            # 3. Check: Direkt vor Beginn der Verarbeitung prüfen
+            if request.future.done():
+                logger.info(f"Request {request.id} ist vor Verarbeitungsbeginn abgebrochen worden. Stoppe Worker.")
+                return
+
             account = db.query(RedditAccount).filter(RedditAccount.id == account_id).first()
             if not account or not account.is_active:
                 logger.warning(f"Gewählter Account ID {account_id} ist nicht mehr aktiv oder vorhanden.")
-                # Request wieder einreihen
-                await self.queue.put((current_priority, time.time(), request))
+                # Nur wieder einreihen, wenn das Future noch aktiv ist
+                if not request.future.done():
+                    await self.queue.put((current_priority, time.time(), request))
                 return
 
             request.attempts += 1
@@ -141,6 +157,11 @@ class ScrapeQueueManager:
             
             # Cooldown für diesen Account einhalten (schläft nur in diesem Task!)
             await self._enforce_cooldown(account)
+
+            # 4. Check: Nach dem Cooldown-Schlaf prüfen, ob das Future noch aktiv ist
+            if request.future.done():
+                logger.info(f"Request {request.id} wurde während des Account-Cooldowns abgebrochen. Stoppe Scraping.")
+                return
 
             # Account als verwendet markieren
             account.last_used_at = datetime.utcnow()
@@ -155,6 +176,11 @@ class ScrapeQueueManager:
                 request.status = "Scraping"
                 data, method_used, new_session = await self._execute_scrape(request.action, request.params, session_state, proxy_url)
                 
+                # 5. Check: Nach dem Scraping prüfen, ob der Client noch da ist
+                if request.future.done():
+                    logger.info(f"Request {request.id} wurde während des Scrapings abgebrochen. Verwerfe Ergebnis.")
+                    return
+
                 # Erfolg: Zähler zurücksetzen
                 account.failure_count = 0
                 if new_session:
@@ -162,12 +188,15 @@ class ScrapeQueueManager:
                 if not request.is_playground:
                     account.request_count = (account.request_count or 0) + 1
                 db.commit()
-                request.future.set_result((data, method_used, account.username))
+                
+                if not request.future.done():
+                    request.future.set_result((data, method_used, account.username))
                 
             except ValueError as val_error:
                 # Client-Fehler (z.B. Subreddit existiert nicht). Kein Failover/Sperren!
                 logger.warning(f"Client-Fehler beim Scraping: {val_error}")
-                request.future.set_exception(val_error)
+                if not request.future.done():
+                    request.future.set_exception(val_error)
                 
             except Exception as scrape_error:
                 logger.warning(f"Fehler beim Scraping mit Haupt-Proxy für Account '{account.username}': {scrape_error}")
@@ -177,22 +206,35 @@ class ScrapeQueueManager:
                 
                 # Fallback-Proxy verwenden, falls definiert
                 if account.fallback_proxy_url:
+                    # 6. Check: Vor dem Fallback-Proxy-Versuch prüfen
+                    if request.future.done():
+                        logger.info(f"Request {request.id} wurde vor Fallback-Versuch abgebrochen. Stoppe.")
+                        return
+
                     logger.info(f"Probiere Fallback-Proxy für Account '{account.username}'...")
                     try:
                         request.status = "Scraping"
                         data, method_used, new_session = await self._execute_scrape(request.action, request.params, session_state, account.fallback_proxy_url)
                         
+                        # 7. Check: Nach dem Fallback-Scraping prüfen
+                        if request.future.done():
+                            logger.info(f"Request {request.id} wurde während des Fallback-Scrapings abgebrochen. Verwerfe Ergebnis.")
+                            return
+
                         account.failure_count = 0
                         if new_session:
                             account.session_state = new_session
                         if not request.is_playground:
                             account.request_count = (account.request_count or 0) + 1
                         db.commit()
-                        request.future.set_result((data, method_used, account.username))
+                        
+                        if not request.future.done():
+                            request.future.set_result((data, method_used, account.username))
                         fallback_success = True
                     except ValueError as val_error:
                         logger.warning(f"Client-Fehler beim Scraping über Fallback-Proxy: {val_error}")
-                        request.future.set_exception(val_error)
+                        if not request.future.done():
+                            request.future.set_exception(val_error)
                         return
                     except Exception as fallback_error:
                         logger.error(f"Fallback-Proxy für Account '{account.username}' ebenfalls fehlgeschlagen: {fallback_error}")
@@ -214,6 +256,11 @@ class ScrapeQueueManager:
                             logger.error(f"Account '{account.username}' wurde nach {account.failure_count} kritischen Fehlern DEAKTIVIERT.")
                         db.commit()
                     
+                    # 8. Check: Vor dem Re-enqueuing prüfen
+                    if request.future.done():
+                        logger.info(f"Request {request.id} wurde vor Re-enqueuing abgebrochen. Keine Wiederholung.")
+                        return
+
                     # Request mit anderem Account wiederholen
                     request.failed_account_ids.add(account.id)
                     if request.attempts < 4:
@@ -226,9 +273,13 @@ class ScrapeQueueManager:
                         async def delayed_requeue(req, delay):
                             await asyncio.sleep(delay)
                             if self._running:
-                                logger.info(f"Delayed Re-enqueuing: Lege Request {req.id} (nach {delay}s) wieder in die Queue (Priorität 0)...")
-                                req.failed_account_ids.clear()
-                                await self.queue.put((0, time.time(), req))
+                                # 9. Check: Unmittelbar vor dem eigentlichen Re-queueing prüfen
+                                if not req.future.done():
+                                    logger.info(f"Delayed Re-enqueuing: Lege Request {req.id} (nach {delay}s) wieder in die Queue (Priorität 0)...")
+                                    req.failed_account_ids.clear()
+                                    await self.queue.put((0, time.time(), req))
+                                else:
+                                    logger.info(f"Request {req.id} wurde während der Re-queue-Verzögerung abgebrochen.")
                                 
                         asyncio.create_task(delayed_requeue(request, wait_time))
                     else:
@@ -237,7 +288,8 @@ class ScrapeQueueManager:
                         
         except Exception as final_exception:
             logger.error(f"Request endgültig fehlgeschlagen: {final_exception}")
-            request.future.set_exception(final_exception)
+            if not request.future.done():
+                request.future.set_exception(final_exception)
         finally:
             # Account entsperren und Task abschließen
             self.busy_account_ids.discard(account_id)
