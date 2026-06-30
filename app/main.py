@@ -677,15 +677,24 @@ async def admin_check_account_session(
         logger.info(f"Führe manuellen Session-Check für Account '{acc.username}' durch...")
         from app.queue_manager import scrape_queue
         
-        # Session-Check ausführen (prüft r/popular.json, erneuert Cookies, und führt Auto-Login aus falls abgelaufen)
-        await scrape_queue._refresh_account_session(db, acc)
+        # Account vor dem Test aktivieren
+        acc.is_active = True
+        db.commit()
         
-        if acc.is_active and acc.session_state:
+        # Session-Check ausführen (prüft r/popular.json, erneuert Cookies, und führt Auto-Login aus falls abgelaufen)
+        success = await scrape_queue._refresh_account_session(db, acc)
+        
+        if success:
             return RedirectResponse(url=f"/admin/dashboard?success=Session-Check+fuer+Konto+{acc.username}+erfolgreich!+Session+ist+aktiv+und+Cookies+wurden+aktualisiert.", status_code=303)
         else:
+            # Bei Fehlschlag Account deaktivieren
+            acc.is_active = False
+            db.commit()
             return RedirectResponse(url=f"/admin/dashboard?error=Session-Check+fuer+Konto+{acc.username}+fehlgeschlagen.+Konto+ist+inaktiv+oder+nicht+eingeloggt.", status_code=303)
     except Exception as e:
         logger.error(f"Fehler bei Session-Check für {acc.username}: {e}")
+        acc.is_active = False
+        db.commit()
         return RedirectResponse(url=f"/admin/dashboard?error=Fehler+beim+Session-Check+fuer+{acc.username}:+{str(e)}", status_code=303)
 
 @app.post("/admin/accounts/{account_id}/check_proxy")

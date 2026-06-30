@@ -302,15 +302,14 @@ class ScrapeQueueManager:
                     break
                 await asyncio.sleep(10)
 
-    async def _refresh_account_session(self, db: Session, account: RedditAccount):
+    async def _refresh_account_session(self, db: Session, account: RedditAccount) -> bool:
         from app.auth import get_account_cookies, update_session_state_with_cookies
         import httpx
         
         cookies = get_account_cookies(account.session_state)
         if not cookies:
             logger.info(f"Session-Refresh: Keine Cookies für {account.username} vorhanden. Starte Auto-Login...")
-            await self._auto_login_account(db, account)
-            return
+            return await self._auto_login_account(db, account)
             
         test_url = "https://www.reddit.com/r/popular.json"
         proxies = {"all://": account.proxy_url} if account.proxy_url else None
@@ -336,14 +335,18 @@ class ScrapeQueueManager:
                     account.failure_count = 0
                     account.is_active = True
                     db.commit()
+                    return True
                 elif response.status_code in [401, 403]:
-                    logger.warning(f"Session-Refresh: Session für '{account.username}' lieferte HTTP {response.status_code}. Wir lassen die Cookies unangetastet, um sie nicht zu löschen.")
+                    logger.warning(f"Session-Refresh: Session für '{account.username}' lieferte HTTP {response.status_code}. Cookies abgelaufen, starte Auto-Login...")
+                    return await self._auto_login_account(db, account)
                 else:
-                    logger.warning(f"Session-Refresh: Unerwarteter Status Code {response.status_code} für '{account.username}'. Keine Aktion.")
+                    logger.warning(f"Session-Refresh: Unerwarteter Status Code {response.status_code} für '{account.username}'. Starte Auto-Login Fallback...")
+                    return await self._auto_login_account(db, account)
         except Exception as e:
-            logger.error(f"Session-Refresh: Fehler beim Verbindungstest für '{account.username}': {e}. Wir behalten die Cookies trotzdem.")
+            logger.error(f"Session-Refresh: Fehler beim Verbindungstest für '{account.username}': {e}. Starte Auto-Login Fallback...")
+            return await self._auto_login_account(db, account)
 
-    async def _auto_login_account(self, db: Session, account: RedditAccount):
+    async def _auto_login_account(self, db: Session, account: RedditAccount) -> bool:
         from app.auth import login_to_reddit
         try:
             logger.info(f"Auto-Login: Führe Login-Refresh für Account '{account.username}' durch...")
@@ -358,6 +361,7 @@ class ScrapeQueueManager:
             account.screenshot_viewed = True
             db.commit()
             logger.info(f"Auto-Login: Login für '{account.username}' erfolgreich abgeschlossen.")
+            return True
         except Exception as e:
             logger.error(f"Auto-Login: Fehler bei Login für '{account.username}': {e}")
             account.session_state = None
@@ -367,6 +371,7 @@ class ScrapeQueueManager:
                 account.is_active = False
                 logger.error(f"Auto-Login: Account '{account.username}' wurde nach 3 aufeinanderfolgenden Fehlern DEAKTIVIERT.")
             db.commit()
+            return False
 
 # Globaler Singleton-Manager
 scrape_queue = ScrapeQueueManager()
