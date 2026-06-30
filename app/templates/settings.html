@@ -109,6 +109,10 @@
                 <i data-lucide="play" class="w-4 h-4"></i>
                 <span>Playground</span>
             </a>
+            <a href="/admin/rapidapi-playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="globe" class="w-4 h-4 text-blue-400"></i>
+                <span>RapidAPI Playground</span>
+            </a>
             <a href="/admin/settings" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg bg-reddit-orange/10 text-reddit-orange border border-reddit-orange/20 hover:bg-reddit-orange/20 transition-all duration-200">
                 <i data-lucide="settings" class="w-4 h-4"></i>
                 <span>Settings</span>
@@ -181,6 +185,35 @@
                         <button type="button" onclick="togglePasswordVisibility()" class="absolute right-4 top-3 text-slate-500 hover:text-white transition-colors">
                             <i data-lucide="eye" id="toggle-eye" class="w-5 h-5"></i>
                         </button>
+                    </div>
+                </div>
+
+                <!-- RapidAPI Playground Credentials -->
+                <div class="border-t border-reddit-border/30 pt-6 space-y-4">
+                    <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
+                        <i data-lucide="key" class="w-4 h-4 text-blue-400"></i>
+                        <span>RapidAPI Test-Playground Zugangsdaten</span>
+                    </h3>
+                    <p class="text-xs text-slate-500">
+                        Diese Werte werden ausschließlich lokal verwendet, um API-Anfragen im "RapidAPI Playground" über das offizielle RapidAPI-Gateway zu simulieren.
+                    </p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-2">
+                            <label for="rapidapi_key" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                                X-RapidAPI-Key
+                            </label>
+                            <input type="password" name="rapidapi_key" id="rapidapi_key" value="{{ settings.rapidapi_key or '' }}"
+                                   placeholder="Kopiere deinen X-RapidAPI-Key aus RapidAPI Studio"
+                                   class="w-full bg-reddit-dark/50 border border-reddit-border rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange focus:ring-1 focus:ring-reddit-orange transition-all duration-200 font-mono text-xs">
+                        </div>
+                        <div class="space-y-2">
+                            <label for="rapidapi_host" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                                X-RapidAPI-Host
+                            </label>
+                            <input type="text" name="rapidapi_host" id="rapidapi_host" value="{{ settings.rapidapi_host or '' }}"
+                                   placeholder="z.B. reddit-scraper-insights-api.p.rapidapi.com"
+                                   class="w-full bg-reddit-dark/50 border border-reddit-border rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange focus:ring-1 focus:ring-reddit-orange transition-all duration-200 font-mono text-xs">
+                        </div>
                     </div>
                 </div>
 

@@ -685,6 +685,14 @@ async def admin_playground(
     settings = load_settings()
     return templates.TemplateResponse("playground.html", {"request": request, "settings": settings})
 
+@app.get("/admin/rapidapi-playground", response_class=HTMLResponse)
+async def admin_rapidapi_playground(
+    request: Request,
+    username: str = Depends(verify_admin)
+):
+    settings = load_settings()
+    return templates.TemplateResponse("rapidapi_playground.html", {"request": request, "settings": settings})
+
 @app.get("/admin/queue", response_class=HTMLResponse)
 async def admin_queue(
     request: Request,
@@ -730,11 +738,16 @@ async def admin_settings_get(
 async def admin_settings_post(
     rapidapi_proxy_secret: str = Form(None),
     sandbox_mode: bool = Form(False),
+    rapidapi_key: str = Form(None),
+    rapidapi_host: str = Form(None),
     username: str = Depends(verify_admin)
 ):
+    current = load_settings()
     settings = {
         "rapidapi_proxy_secret": (rapidapi_proxy_secret or "").strip(),
-        "sandbox_mode": sandbox_mode
+        "sandbox_mode": sandbox_mode,
+        "rapidapi_key": (rapidapi_key or "").strip(),
+        "rapidapi_host": (rapidapi_host or "").strip()
     }
     save_settings(settings)
     logger.info(f"System-Settings aktualisiert: Sandbox Mode = {sandbox_mode}")
