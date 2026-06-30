@@ -354,6 +354,10 @@ async def get_page_json(page) -> dict:
     if "blocked by network security" in content.lower() or "deine anfrage wurde von der netzwerksicherheit blockiert" in content.lower():
         raise Exception("Reddit blockiert die Verbindung (Netzwerksicherheits-Sperre). Proxy erforderlich.")
         
+    # Überprüfen, ob wir ein Rate-Limit sehen
+    if "too many requests" in content.lower() or "429" in content:
+        raise Exception("Reddit-API lieferte Status Code 429 (Too Many Requests). IP/Proxy ist rate-limited.")
+        
     try:
         return json.loads(content)
     except json.JSONDecodeError:

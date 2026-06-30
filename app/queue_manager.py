@@ -139,10 +139,18 @@ class ScrapeQueueManager:
             except Exception as scrape_error:
                 logger.warning(f"Fehler beim Scraping mit Haupt-Proxy für Account '{account.username}': {scrape_error}")
                 
-                # Wenn Session-Fehler vorliegt, leeren wir die Session NICHT automatisch, um manuelle Cookies zu schonen.
-                # Wir erhöhen stattdessen den failure_count des Kontos.
-                account.failure_count = (account.failure_count or 0) + 1
-                db.commit()
+                # Prüfen, ob es sich um ein temporäres Netzwerk-, Proxy- oder Rate-Limit-Problem handelt
+                err_msg_lower = str(scrape_error).lower()
+                is_temporary_network_issue = any(
+                    x in err_msg_lower 
+                    for x in ["429", "too many requests", "timeout", "connect", "503", "502", "network security", "blocked"]
+                )
+                
+                if is_temporary_network_issue:
+                    logger.warning(f"Temporäres Netzwerk/Proxy/Rate-Limit-Problem beim Scraping: {scrape_error}. Account '{account.username}' wird nicht bestraft.")
+                else:
+                    account.failure_count = (account.failure_count or 0) + 1
+                    db.commit()
                 
                 # Fallback-Proxy versuchen, falls definiert
                 if account.fallback_proxy_url:
@@ -167,7 +175,7 @@ class ScrapeQueueManager:
                         # Session-Cookies werden nicht automatisch gelöscht, um manuelle Cookies zu schonen.
                 
                 # Wenn auch der Fallback-Proxy fehlschlägt (oder kein Fallback definiert war):
-                # failure_count wurde bereits oben (Zeile 144) erhöht, hier nur prüfen ob Schwelle erreicht
+                # failure_count wurde bereits oben (falls kein temporärer Fehler) erhöht, hier nur prüfen ob Schwelle erreicht
                 if account.failure_count >= 3:
                     account.is_active = False
                     logger.error(f"Account '{account.username}' wurde nach {account.failure_count} aufeinanderfolgenden Fehlern DEAKTIVIERT.")
