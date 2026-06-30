@@ -4,7 +4,7 @@ import time
 import uuid
 from datetime import datetime
 from sqlalchemy.orm import Session
-from app.database import SessionLocal, RedditAccount
+from app.database import SessionLocal, RedditAccount, APIRequestLog
 from app.scraper import get_subreddit_posts, get_post_comments
 
 logger = logging.getLogger("rddtscpr.queue")
@@ -39,17 +39,22 @@ class ScrapeQueueManager:
         self.queue = asyncio.PriorityQueue()
         self.worker_task = None
         self.refresh_task = None
+        self.load_monitor_task = None
         self._running = False
         self.cooldown_seconds = 3.0  # Mindestabstand zwischen Zugriffen desselben Accounts
         self.active_requests = {}  # id -> ScrapeRequest
         self.busy_account_ids = set()  # In-Memory Sperre für Accounts, die gerade arbeiten
+        self.load_history = []  # [(timestamp, load_pct)] over the last 24 hours
+        self.sparkline_history = []  # last 60 load values for sparkline
+        self.wait_times = []  # delay in seconds for last 100 requests
 
     def start(self):
         if not self._running:
             self._running = True
             self.worker_task = asyncio.create_task(self._worker_loop())
             self.refresh_task = asyncio.create_task(self._session_refresh_loop())
-            logger.info("ScrapeQueueManager erfolgreich gestartet (inkl. Session-Refresh Task).")
+            self.load_monitor_task = asyncio.create_task(self._load_monitor_loop())
+            logger.info("ScrapeQueueManager erfolgreich gestartet (inkl. Session-Refresh & Load-Monitor Tasks).")
 
     async def stop(self):
         self._running = False
@@ -63,6 +68,12 @@ class ScrapeQueueManager:
             self.refresh_task.cancel()
             try:
                 await self.refresh_task
+            except asyncio.CancelledError:
+                pass
+        if self.load_monitor_task:
+            self.load_monitor_task.cancel()
+            try:
+                await self.load_monitor_task
             except asyncio.CancelledError:
                 pass
         logger.info("ScrapeQueueManager beendet.")
@@ -139,6 +150,12 @@ class ScrapeQueueManager:
     async def _process_request_concurrent(self, request: ScrapeRequest, account_id: int, current_priority: int):
         db = SessionLocal()
         try:
+            # Warteschlangen-Wartezeit erfassen
+            wait_time = (datetime.utcnow() - request.created_at).total_seconds()
+            self.wait_times.append(wait_time)
+            if len(self.wait_times) > 100:
+                self.wait_times.pop(0)
+
             # 3. Check: Direkt vor Beginn der Verarbeitung prüfen
             if request.future.done():
                 logger.info(f"Request {request.id} ist vor Verarbeitungsbeginn abgebrochen worden. Stoppe Worker.")
@@ -368,15 +385,134 @@ class ScrapeQueueManager:
                 "age_seconds": int((datetime.utcnow() - r.created_at).total_seconds())
             })
             
+        current_load, max_24h_load = self.calculate_system_load()
+        avg_wait = sum(self.wait_times) / len(self.wait_times) if self.wait_times else 0.0
+        
+        # Latest 50 logs laden
+        logs_json = []
+        total_requests = 0
+        success_requests = 0
+        client_error_requests = 0
+        api_error_requests = 0
+        success_rate = 100.0
+        avg_duration_ms = 0
+        
+        try:
+            with SessionLocal() as db:
+                logs = db.query(APIRequestLog).order_by(APIRequestLog.timestamp.desc()).limit(50).all()
+                for log in logs:
+                    logs_json.append({
+                        "timestamp": log.timestamp.strftime('%d.%m.%Y %H:%M:%S'),
+                        "endpoint": log.endpoint,
+                        "target": log.target,
+                        "method_used": log.method_used,
+                        "reddit_username": log.reddit_username or "-",
+                        "response_time_ms": log.response_time_ms,
+                        "status_code": log.status_code,
+                        "error_message": log.error_message or ""
+                    })
+                    
+                total_requests = db.query(APIRequestLog).count()
+                success_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code == 200).count()
+                client_error_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code.between(400, 499)).count()
+                api_error_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code >= 500).count()
+                
+                success_rate = (success_requests / (success_requests + api_error_requests) * 100) if (success_requests + api_error_requests) > 0 else 100.0
+                
+                avg_duration = db.query(APIRequestLog).filter(APIRequestLog.status_code == 200)
+                if success_requests > 0:
+                    durations = [log.response_time_ms for log in avg_duration.all()]
+                    avg_duration_ms = int(sum(durations) / len(durations))
+        except Exception as e:
+            logger.error(f"Fehler beim Laden der API-Statistiken für Queue-API: {e}")
+            
         return {
             "stats": {
                 "total": len(items),
                 "pending": pending_count,
                 "active": active_count,
-                "cooldown_seconds": self.cooldown_seconds
+                "cooldown_seconds": self.cooldown_seconds,
+                "current_load": round(current_load, 1),
+                "max_24h_load": round(max_24h_load, 1),
+                "avg_wait_seconds": round(avg_wait, 1),
+                # Global stats
+                "global_total": total_requests,
+                "global_success_rate": f"{success_rate:.1f}%",
+                "global_api_errors": api_error_requests,
+                "global_client_errors": client_error_requests,
+                "global_avg_duration_ms": avg_duration_ms
             },
-            "requests": items
+            "requests": items,
+            "logs": logs_json,
+            "sparkline": list(self.sparkline_history)
         }
+
+    def calculate_system_load(self) -> tuple[float, float]:
+        """Berechnet die aktuelle Auslastung (in %) und gibt (current_load, max_24h_load) zurück."""
+        try:
+            with SessionLocal() as db:
+                active_accounts = db.query(RedditAccount).filter(RedditAccount.is_active == True).all()
+        except Exception as e:
+            logger.error(f"Fehler beim Laden aktiver Accounts für Load-Berechnung: {e}")
+            return 0.0, self.get_max_24h_load()
+            
+        n_active = len(active_accounts)
+        if n_active == 0:
+            return 0.0, self.get_max_24h_load()
+            
+        w_working = 0
+        now = datetime.utcnow()
+        
+        for acc in active_accounts:
+            is_busy = acc.id in self.busy_account_ids
+            in_cooldown = False
+            if acc.last_used_at:
+                elapsed = (now - acc.last_used_at).total_seconds()
+                if elapsed < self.cooldown_seconds:
+                    in_cooldown = True
+            if is_busy or in_cooldown:
+                w_working += 1
+                
+        # Queue-Länge (wartende Requests)
+        q_len = 0
+        for r in self.active_requests.values():
+            if r.status == "Wartend":
+                q_len += 1
+                
+        current_load = ((w_working + q_len) / n_active) * 100.0
+        
+        # Max 24h Load aktualisieren und holen
+        self.update_load_history(current_load)
+        max_24h = self.get_max_24h_load()
+        
+        return current_load, max_24h
+
+    def update_load_history(self, current_load: float):
+        now = time.time()
+        self.load_history.append((now, current_load))
+        # Bereinigen: älter als 24h entfernen
+        cutoff = now - 24 * 3600
+        self.load_history = [x for x in self.load_history if x[0] > cutoff]
+
+    def get_max_24h_load(self) -> float:
+        if not self.load_history:
+            return 0.0
+        return max(x[1] for x in self.load_history)
+
+    async def _load_monitor_loop(self):
+        logger.info("Load-Monitor-Loop gestartet.")
+        while self._running:
+            try:
+                current_load, _ = self.calculate_system_load()
+                # Für Sparkline: Letzten 60 Samples behalten (z.B. die letzten 5 Minuten bei 5s Intervall)
+                self.sparkline_history.append(round(current_load, 1))
+                if len(self.sparkline_history) > 60:
+                    self.sparkline_history.pop(0)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Fehler im Load-Monitor-Loop: {e}")
+            await asyncio.sleep(5)
 
     async def _session_refresh_loop(self):
         logger.info("Session-Refresh-Loop gestartet.")

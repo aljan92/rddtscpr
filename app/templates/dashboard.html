@@ -107,340 +107,247 @@
             </div>
         </div>
 
-        <!-- Session & Control Section -->
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <!-- Reddit Accounts List (Left col, span 3) -->
-            <div class="glass-card p-6 rounded-2xl flex flex-col justify-between lg:col-span-3 space-y-6">
-                <div>
-                    <h2 class="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
-                        <i data-lucide="users" class="text-reddit-orange w-5 h-5"></i>
-                        <span>Reddit-Accounts & Sessions</span>
-                    </h2>
-                    
-                    <div class="overflow-x-auto border border-reddit-border/50 rounded-xl bg-reddit-dark/30">
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="bg-reddit-dark/60 border-b border-reddit-border text-slate-400 text-xs font-semibold uppercase">
-                                    <th class="p-3">Benutzername</th>
-                                    <th class="p-3">Proxy</th>
-                                    <th class="p-3 text-center">Anfragen</th>
-                                    <th class="p-3 text-center">Session</th>
-                                    <th class="p-3 text-center">Status</th>
-                                    <th class="p-3 text-right">Aktionen</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-reddit-border/30 text-sm">
-                                {% for acc in accounts %}
-                                <tr class="hover:bg-slate-800/10 transition-all duration-150">
-                                    <td class="p-3 font-semibold text-white">
-                                        {{ acc.username }}
-                                        {% if acc.failure_count > 0 %}
-                                            <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20" title="Fehlgeschlagene Versuche">
-                                                {{ acc.failure_count }} F
-                                            </span>
-                                        {% endif %}
-                                    </td>
-                                    <td class="p-3 text-slate-400 font-mono text-xs max-w-[180px] truncate" title="Fallback: {{ acc.fallback_proxy_url }}">
-                                        {{ acc.proxy_url }}
-                                    </td>
-                                    <td class="p-3 text-center font-semibold text-slate-300">
-                                        {{ acc.request_count }}
-                                    </td>
-                                    <td class="p-3 text-center">
-                                        {% if not acc.is_active %}
-                                            <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20" title="Konto ist inaktiv oder wegen Fehlern gesperrt">
-                                                Gesperrt/Inaktiv
-                                            </span>
-                                        {% elif acc.failure_count > 0 %}
-                                            <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20" title="Letzter Versuch schlug fehl. Fehlversuche: {{ acc.failure_count }}">
-                                                Fehlerhaft
-                                            </span>
-                                        {% elif acc.session_active %}
-                                            <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="Gültig bis: {{ acc.session_expires }}">
-                                                Aktiv
-                                            </span>
-                                        {% else %}
-                                            <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20" title="{{ acc.session_message }}">
-                                                Keine Session
-                                            </span>
-                                        {% endif %}
-                                    </td>
-                                    <td class="p-3 text-center">
-                                        <form action="/admin/accounts/{{ acc.id }}/toggle" method="POST" class="inline">
-                                            <button type="submit" class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-semibold transition-all duration-200 cursor-pointer {{ 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20' if acc.is_active else 'bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20' }}">
-                                                {{ 'Aktiv' if acc.is_active else 'Deaktiviert' }}
-                                            </button>
-                                        </form>
-                                    </td>
-                                    <td class="p-3 text-right space-x-1.5 flex items-center justify-end">
-                                        <!-- Fehler-Screenshot (Dauerhaft eingeblendet) -->
-                                        {% if acc.has_screenshot %}
-                                            <button onclick="showScreenshotModal({{ acc.id }}, '{{ acc.username }}')" 
-                                                    class="p-1.5 rounded-lg border hover:bg-slate-800 text-rose-400 hover:text-rose-300 transition-all duration-200 cursor-pointer {{ 'border-amber-400 text-amber-400 ring-2 ring-amber-400/20' if not acc.screenshot_viewed else 'border-reddit-border' }}" 
-                                                    title="Fehler-Screenshot anzeigen {% if not acc.screenshot_viewed %}(NEU!){% endif %}">
-                                                <i data-lucide="image" class="w-4 h-4"></i>
-                                            </button>
-                                        {% else %}
-                                            <button disabled 
-                                                    class="p-1.5 rounded-lg border border-reddit-border/30 text-slate-600 cursor-not-allowed opacity-40" 
-                                                    title="Kein Screenshot vorhanden">
-                                                <i data-lucide="image" class="w-4 h-4"></i>
-                                            </button>
-                                        {% endif %}
+        <!-- Statistics Horizontal Grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4">
+            <!-- Card 1: Total Requests -->
+            <div class="glass-card p-4 rounded-xl border border-reddit-border/50 text-center flex flex-col justify-between">
+                <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">Requests Gesamt</span>
+                <span class="text-xl font-bold text-white">{{ stats.total }}</span>
+            </div>
+            <!-- Card 2: Success Rate -->
+            <div class="glass-card p-4 rounded-xl border border-reddit-border/50 text-center flex flex-col justify-between">
+                <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">Erfolgsquote (API)</span>
+                <span class="text-xl font-bold text-emerald-400">{{ stats.success_rate }}</span>
+            </div>
+            <!-- Card 3: System Errors -->
+            <div class="glass-card p-4 rounded-xl border border-reddit-border/50 text-center flex flex-col justify-between">
+                <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">API-Fehler (5xx)</span>
+                <span class="text-xl font-bold text-rose-400">{{ stats.api_errors }}</span>
+            </div>
+            <!-- Card 4: Client Errors -->
+            <div class="glass-card p-4 rounded-xl border border-reddit-border/50 text-center flex flex-col justify-between">
+                <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">Client-Fehler (4xx)</span>
+                <span class="text-xl font-bold text-amber-500">{{ stats.client_errors }}</span>
+            </div>
+            <!-- Card 5: Current Load -->
+            <div class="glass-card p-4 rounded-xl border border-reddit-border/50 text-center flex flex-col justify-between">
+                <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">Aktuelle Last</span>
+                <span class="text-xl font-bold {% if stats.current_load > 150 %}text-rose-400 animate-pulse{% elif stats.current_load > 100 %}text-amber-400 animate-pulse{% else %}text-emerald-400{% endif %}">
+                    {{ stats.current_load }}%
+                </span>
+            </div>
+            <!-- Card 6: Peak Load -->
+            <div class="glass-card p-4 rounded-xl border border-reddit-border/50 text-center flex flex-col justify-between">
+                <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">Peak Last (24h)</span>
+                <span class="text-xl font-bold {% if stats.max_24h_load > 100 %}text-amber-400{% else %}text-white{% endif %}">{{ stats.max_24h_load }}%</span>
+            </div>
+            <!-- Card 7: Response Time -->
+            <div class="glass-card p-4 rounded-xl border border-reddit-border/50 text-center col-span-2 sm:col-span-1 flex flex-col justify-between">
+                <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">Ø Antwortzeit</span>
+                <span class="text-xl font-bold text-blue-400">{{ stats.avg_duration_ms }} ms</span>
+            </div>
+        </div>
 
-                                        <!-- Session prüfen -->
-                                        <form action="/admin/accounts/{{ acc.id }}/check" method="POST" class="inline check-form">
-                                            <button type="submit" class="check-btn p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 transition-all duration-200 cursor-pointer" title="Session testen & aktualisieren (Schnell-Check)">
-                                                <i data-lucide="shield-check" class="w-4 h-4 check-icon"></i>
-                                            </button>
-                                        </form>
-
-                                        <!-- Proxy prüfen -->
-                                        {% if acc.proxy_url and acc.proxy_url != 'Kein Proxy' %}
-                                        <form action="/admin/accounts/{{ acc.id }}/check_proxy" method="POST" class="inline proxy-check-form">
-                                            <button type="submit" class="proxy-check-btn p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-violet-400 hover:text-violet-300 transition-all duration-200 cursor-pointer" title="Proxy-Verbindung & IP prüfen">
-                                                <i data-lucide="globe" class="w-4 h-4 proxy-check-icon"></i>
-                                            </button>
-                                        </form>
-                                        {% else %}
-                                        <button disabled class="p-1.5 rounded-lg border border-reddit-border/30 text-slate-600 cursor-not-allowed opacity-40" title="Kein Proxy für dieses Konto konfiguriert">
-                                            <i data-lucide="globe" class="w-4 h-4"></i>
+        <!-- Reddit Accounts List (Full width) -->
+        <div class="glass-card p-6 rounded-2xl flex flex-col space-y-6 w-full">
+            <div>
+                <h2 class="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
+                    <i data-lucide="users" class="text-reddit-orange w-5 h-5"></i>
+                    <span>Reddit-Accounts & Sessions</span>
+                </h2>
+                
+                <div class="overflow-x-auto border border-reddit-border/50 rounded-xl bg-reddit-dark/30">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-reddit-dark/60 border-b border-reddit-border text-slate-400 text-xs font-semibold uppercase">
+                                <th class="p-3">Benutzername</th>
+                                <th class="p-3">Proxy</th>
+                                <th class="p-3 text-center">Anfragen</th>
+                                <th class="p-3 text-center">Session</th>
+                                <th class="p-3 text-center">Status</th>
+                                <th class="p-3 text-right">Aktionen</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-reddit-border/30 text-sm">
+                            {% for acc in accounts %}
+                            <tr class="hover:bg-slate-800/10 transition-all duration-150">
+                                <td class="p-3 font-semibold text-white">
+                                    {{ acc.username }}
+                                    {% if acc.failure_count > 0 %}
+                                        <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20" title="Fehlgeschlagene Versuche">
+                                            {{ acc.failure_count }} F
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="p-3 text-slate-400 font-mono text-xs max-w-[180px] truncate" title="Fallback: {{ acc.fallback_proxy_url }}">
+                                    {{ acc.proxy_url }}
+                                </td>
+                                <td class="p-3 text-center font-semibold text-slate-300">
+                                    {{ acc.request_count }}
+                                </td>
+                                <td class="p-3 text-center">
+                                    {% if not acc.is_active %}
+                                        <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20" title="Konto ist inaktiv oder wegen Fehlern gesperrt">
+                                            Gesperrt/Inaktiv
+                                        </span>
+                                    {% elif acc.failure_count > 0 %}
+                                        <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20" title="Letzter Versuch schlug fehl. Fehlversuche: {{ acc.failure_count }}">
+                                            Fehlerhaft
+                                        </span>
+                                    {% elif acc.session_active %}
+                                        <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="Gültig bis: {{ acc.session_expires }}">
+                                            Aktiv
+                                        </span>
+                                    {% else %}
+                                        <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20" title="{{ acc.session_message }}">
+                                            Keine Session
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="p-3 text-center">
+                                    <form action="/admin/accounts/{{ acc.id }}/toggle" method="POST" class="inline">
+                                        <button type="submit" class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-semibold transition-all duration-200 cursor-pointer {{ 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20' if acc.is_active else 'bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20' }}">
+                                            {{ 'Aktiv' if acc.is_active else 'Deaktiviert' }}
                                         </button>
-                                        {% endif %}
-
-                                        <button onclick="showEditModal({{ acc.id }}, '{{ acc.username }}', '{{ acc.proxy_url if acc.proxy_url != 'Kein Proxy' else '' }}', '{{ acc.fallback_proxy_url if acc.fallback_proxy_url != 'Kein Proxy' else '' }}')" class="p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-amber-400 hover:text-amber-300 transition-all duration-200 cursor-pointer" title="Konto bearbeiten">
-                                            <i data-lucide="edit-3" class="w-4 h-4"></i>
+                                    </form>
+                                </td>
+                                <td class="p-3 text-right space-x-1.5 flex items-center justify-end">
+                                    <!-- Fehler-Screenshot (Dauerhaft eingeblendet) -->
+                                    {% if acc.has_screenshot %}
+                                        <button onclick="showScreenshotModal({{ acc.id }}, '{{ acc.username }}')" 
+                                                class="p-1.5 rounded-lg border hover:bg-slate-800 text-rose-400 hover:text-rose-300 transition-all duration-200 cursor-pointer {{ 'border-amber-400 text-amber-400 ring-2 ring-amber-400/20' if not acc.screenshot_viewed else 'border-reddit-border' }}" 
+                                                title="Fehler-Screenshot anzeigen {% if not acc.screenshot_viewed %}(NEU!){% endif %}">
+                                            <i data-lucide="image" class="w-4 h-4"></i>
                                         </button>
-                                        <form action="/admin/accounts/{{ acc.id }}/refresh" method="POST" class="inline refresh-form">
-                                            <button type="submit" class="refresh-btn p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-blue-400 hover:text-blue-300 transition-all duration-200 cursor-pointer" title="Session erneuern (Playwright Login)">
-                                                <i data-lucide="refresh-cw" class="w-4 h-4 refresh-icon"></i>
-                                            </button>
-                                        </form>
-                                        <form action="/admin/accounts/{{ acc.id }}/delete" method="POST" class="inline" onsubmit="return confirm('Möchtest du dieses Konto wirklich löschen?')">
-                                            <button type="submit" class="p-1.5 rounded-lg border border-rose-500/20 hover:bg-rose-500/10 text-rose-400 hover:text-rose-300 transition-all duration-200" title="Konto löschen">
-                                                <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                            </button>
-                                        </form>
-                                    </td>
-                                </tr>
-                                {% else %}
-                                <tr>
-                                    <td colspan="5" class="p-6 text-center text-slate-500">
-                                        Keine Accounts hinterlegt. Bitte erstelle unten ein Konto.
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
+                                    {% else %}
+                                        <button disabled 
+                                                class="p-1.5 rounded-lg border border-reddit-border/30 text-slate-600 cursor-not-allowed opacity-40" 
+                                                title="Kein Screenshot vorhanden">
+                                            <i data-lucide="image" class="w-4 h-4"></i>
+                                        </button>
+                                    {% endif %}
+
+                                    <!-- Session prüfen -->
+                                    <form action="/admin/accounts/{{ acc.id }}/check" method="POST" class="inline check-form">
+                                        <button type="submit" class="check-btn p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 transition-all duration-200 cursor-pointer" title="Session testen & aktualisieren (Schnell-Check)">
+                                            <i data-lucide="shield-check" class="w-4 h-4 check-icon"></i>
+                                        </button>
+                                    </form>
+
+                                    <!-- Proxy prüfen -->
+                                    {% if acc.proxy_url and acc.proxy_url != 'Kein Proxy' %}
+                                    <form action="/admin/accounts/{{ acc.id }}/check_proxy" method="POST" class="inline proxy-check-form">
+                                        <button type="submit" class="proxy-check-btn p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-violet-400 hover:text-violet-300 transition-all duration-200 cursor-pointer" title="Proxy-Verbindung & IP prüfen">
+                                            <i data-lucide="globe" class="w-4 h-4 proxy-check-icon"></i>
+                                        </button>
+                                    </form>
+                                    {% else %}
+                                    <button disabled class="p-1.5 rounded-lg border border-reddit-border/30 text-slate-600 cursor-not-allowed opacity-40" title="Kein Proxy für dieses Konto konfiguriert">
+                                        <i data-lucide="globe" class="w-4 h-4"></i>
+                                    </button>
+                                    {% endif %}
+
+                                    <button onclick="showEditModal({{ acc.id }}, '{{ acc.username }}', '{{ acc.proxy_url if acc.proxy_url != 'Kein Proxy' else '' }}', '{{ acc.fallback_proxy_url if acc.fallback_proxy_url != 'Kein Proxy' else '' }}')" class="p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-amber-400 hover:text-amber-300 transition-all duration-200 cursor-pointer" title="Konto bearbeiten">
+                                        <i data-lucide="edit-3" class="w-4 h-4"></i>
+                                    </button>
+                                    <form action="/admin/accounts/{{ acc.id }}/refresh" method="POST" class="inline refresh-form">
+                                        <button type="submit" class="refresh-btn p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-blue-400 hover:text-blue-300 transition-all duration-200 cursor-pointer" title="Session erneuern (Playwright Login)">
+                                            <i data-lucide="refresh-cw" class="w-4 h-4 refresh-icon"></i>
+                                        </button>
+                                    </form>
+                                    <form action="/admin/accounts/{{ acc.id }}/delete" method="POST" class="inline" onsubmit="return confirm('Möchtest du dieses Konto wirklich löschen?')">
+                                        <button type="submit" class="p-1.5 rounded-lg border border-rose-500/20 hover:bg-rose-500/10 text-rose-400 hover:text-rose-300 transition-all duration-200" title="Konto löschen">
+                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="p-6 text-center text-slate-500">
+                                    Keine Accounts hinterlegt. Bitte erstelle unten ein Konto.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
+            </div>
 
-                <!-- Add Account Form -->
-                <div class="border-t border-reddit-border/50 pt-6">
-                    <h3 class="text-sm font-semibold text-white mb-4 flex items-center space-x-2">
-                        <i data-lucide="user-plus" class="text-blue-400 w-4 h-4"></i>
-                        <span>Neues Reddit-Konto hinzufügen</span>
-                    </h3>
-                    
-                    <form action="/admin/accounts/add" method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="space-y-1">
-                            <label class="text-xs text-slate-400 font-semibold">Reddit Username</label>
-                            <input type="text" name="username" required placeholder="Reddit Username" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
-                        </div>
-                        <div class="space-y-1">
-                            <label class="text-xs text-slate-400 font-semibold">Reddit Passwort</label>
-                            <input type="password" name="password" required placeholder="Reddit Passwort" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
-                        </div>
-                        <div class="space-y-1">
-                            <label class="text-xs text-slate-400 font-semibold">Haupt-Proxy (optional)</label>
-                            <input type="text" name="proxy_url" placeholder="http://user:pass@host:port" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
-                        </div>
-                        <div class="space-y-1">
-                            <label class="text-xs text-slate-400 font-semibold">Fallback-Proxy (optional)</label>
-                            <input type="text" name="fallback_proxy_url" placeholder="http://user:pass@host:port" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
-                        </div>
-                        <!-- Cookie Fields -->
-                        <div class="md:col-span-2">
-                            <div class="border border-reddit-border/40 rounded-xl p-4 space-y-3 bg-black/20">
-                                <p class="text-xs font-semibold text-slate-300 flex items-center space-x-2">
-                                    <i data-lucide="cookie" class="w-3.5 h-3.5 text-yellow-400"></i>
-                                    <span>Browser-Cookies (optional – einzeln ausfüllen ODER als kompletten String einfügen)</span>
-                                </p>
-                                <div class="space-y-3">
-                                    <div class="space-y-1">
-                                        <label class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Kompletter Cookie-String (name=value; loid=...)</label>
-                                        <input type="text" name="cookie_combined" placeholder="reddit_session=eyJ...; loid=...; session_tracker=..." class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange transition-all duration-200">
-                                    </div>
-                                    <div class="relative flex py-1 items-center">
-                                        <div class="flex-grow border-t border-reddit-border/30"></div>
-                                        <span class="flex-shrink mx-4 text-[10px] text-slate-500 uppercase font-semibold">ODER EINZELN</span>
-                                        <div class="flex-grow border-t border-reddit-border/30"></div>
-                                    </div>
+            <!-- Add Account Form -->
+            <div class="border-t border-reddit-border/50 pt-6">
+                <h3 class="text-sm font-semibold text-white mb-4 flex items-center space-x-2">
+                    <i data-lucide="user-plus" class="text-blue-400 w-4 h-4"></i>
+                    <span>Neues Reddit-Konto hinzufügen</span>
+                </h3>
+                
+                <form action="/admin/accounts/add" method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="space-y-1">
+                        <label class="text-xs text-slate-400 font-semibold">Reddit Username</label>
+                        <input type="text" name="username" required placeholder="Reddit Username" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs text-slate-400 font-semibold">Reddit Passwort</label>
+                        <input type="password" name="password" required placeholder="Reddit Passwort" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs text-slate-400 font-semibold">Haupt-Proxy (optional)</label>
+                        <input type="text" name="proxy_url" placeholder="http://user:pass@host:port" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs text-slate-400 font-semibold">Fallback-Proxy (optional)</label>
+                        <input type="text" name="fallback_proxy_url" placeholder="http://user:pass@host:port" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                    </div>
+                    <!-- Cookie Fields -->
+                    <div class="md:col-span-2">
+                        <div class="border border-reddit-border/40 rounded-xl p-4 space-y-3 bg-black/20">
+                            <p class="text-xs font-semibold text-slate-300 flex items-center space-x-2">
+                                <i data-lucide="cookie" class="w-3.5 h-3.5 text-yellow-400"></i>
+                                <span>Browser-Cookies (optional – einzeln ausfüllen ODER als kompletten String einfügen)</span>
+                            </p>
+                            <div class="space-y-3">
+                                <div class="space-y-1">
+                                    <label class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Kompletter Cookie-String (name=value; loid=...)</label>
+                                    <input type="text" name="cookie_combined" placeholder="reddit_session=eyJ...; loid=...; session_tracker=..." class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange transition-all duration-200">
                                 </div>
-                                <div class="grid grid-cols-1 gap-2 pt-1">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="text-xs text-slate-500 w-32 shrink-0 font-mono">reddit_session</span>
-                                        <input type="text" name="cookie_reddit_session" placeholder="eyJhbGci..." class="flex-1 bg-reddit-dark border border-reddit-border rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange transition-all font-mono">
-                                    </div>
-                                    <div class="flex items-center space-x-2">
-                                        <span class="text-xs text-slate-500 w-32 shrink-0 font-mono">loid</span>
-                                        <input type="text" name="cookie_loid" placeholder="000000002h..." class="flex-1 bg-reddit-dark border border-reddit-border rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange transition-all font-mono">
-                                    </div>
-                                    <div class="flex items-center space-x-2">
-                                        <span class="text-xs text-slate-500 w-32 shrink-0 font-mono">session_tracker</span>
-                                        <input type="text" name="cookie_session_tracker" placeholder="nigfgcrl..." class="flex-1 bg-reddit-dark border border-reddit-border rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange transition-all font-mono">
-                                    </div>
-                                    <div class="flex items-center space-x-2">
-                                        <span class="text-xs text-slate-500 w-32 shrink-0 font-mono">csrf_token</span>
-                                        <input type="text" name="cookie_csrf_token" placeholder="a1b2c3..." class="flex-1 bg-reddit-dark border border-reddit-border rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange transition-all font-mono">
-                                    </div>
-                                    <div class="flex items-center space-x-2">
-                                        <span class="text-xs text-slate-500 w-32 shrink-0 font-mono">token_v2</span>
-                                        <input type="text" name="cookie_token_v2" placeholder="eyJ0eXAi..." class="flex-1 bg-reddit-dark border border-reddit-border rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange transition-all font-mono">
-                                    </div>
+                                <div class="relative flex py-1 items-center">
+                                    <div class="flex-grow border-t border-reddit-border/30"></div>
+                                    <span class="flex-shrink mx-4 text-[10px] text-slate-500 uppercase font-semibold">ODER EINZELN</span>
+                                    <div class="flex-grow border-t border-reddit-border/30"></div>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 gap-2 pt-1">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-xs text-slate-500 w-32 shrink-0 font-mono">reddit_session</span>
+                                    <input type="text" name="cookie_reddit_session" placeholder="eyJhbGci..." class="flex-1 bg-reddit-dark border border-reddit-border rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange transition-all font-mono">
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-xs text-slate-500 w-32 shrink-0 font-mono">loid</span>
+                                    <input type="text" name="cookie_loid" placeholder="000000002h..." class="flex-1 bg-reddit-dark border border-reddit-border rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange transition-all font-mono">
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-xs text-slate-500 w-32 shrink-0 font-mono">session_tracker</span>
+                                    <input type="text" name="cookie_session_tracker" placeholder="nigfgcrl..." class="flex-1 bg-reddit-dark border border-reddit-border rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange transition-all font-mono">
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-xs text-slate-500 w-32 shrink-0 font-mono">csrf_token</span>
+                                    <input type="text" name="cookie_csrf_token" placeholder="a1b2c3..." class="flex-1 bg-reddit-dark border border-reddit-border rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange transition-all font-mono">
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-xs text-slate-500 w-32 shrink-0 font-mono">token_v2</span>
+                                    <input type="text" name="cookie_token_v2" placeholder="eyJ0eXAi..." class="flex-1 bg-reddit-dark border border-reddit-border rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange transition-all font-mono">
                                 </div>
                             </div>
                         </div>
-                        
-                        <div class="md:col-span-2 pt-2">
-                            <button type="submit" class="w-full flex items-center justify-center space-x-2 bg-reddit-orange hover:bg-reddit-orange/90 text-white font-semibold py-2.5 px-4 rounded-xl transition-all duration-300 hover:scale-[1.005] active:scale-[0.995]">
-                                <i data-lucide="plus" class="w-4 h-4"></i>
-                                <span>Konto registrieren</span>
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-            <!-- Stats Mini Card -->
-            <div class="glass-card p-6 rounded-2xl flex flex-col justify-between">
-                <div>
-                    <h2 class="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
-                        <i data-lucide="activity" class="text-blue-400 w-5 h-5"></i>
-                        <span>Systemstatistik</span>
-                    </h2>
-                    <div class="grid grid-cols-1 gap-3">
-                        <div class="bg-reddit-dark/40 p-4 rounded-xl border border-reddit-border/50">
-                            <span class="text-xs text-slate-400 block mb-1">Requests Gesamt</span>
-                            <span class="text-2xl font-bold text-white">{{ stats.total }}</span>
-                        </div>
-                        <div class="bg-reddit-dark/40 p-4 rounded-xl border border-reddit-border/50">
-                            <span class="text-xs text-slate-400 block mb-1">Erfolgsquote</span>
-                            <span class="text-2xl font-bold text-emerald-400">{{ stats.success_rate }}</span>
-                        </div>
-                        <div class="bg-reddit-dark/40 p-4 rounded-xl border border-reddit-border/50">
-                            <span class="text-xs text-slate-400 block mb-1">Ø Antwortzeit</span>
-                            <span class="text-2xl font-bold text-blue-400">{{ stats.avg_duration_ms }} ms</span>
-                        </div>
-                        <div class="bg-reddit-dark/40 p-4 rounded-xl border border-reddit-border/50">
-                            <span class="text-xs text-slate-400 block mb-1">Fehler</span>
-                            <span class="text-2xl font-bold text-rose-400">{{ stats.error }}</span>
-                        </div>
                     </div>
-                </div>
-                <div class="mt-4 pt-4 border-t border-reddit-border/50 flex justify-between text-xs text-slate-400">
-                    <span>JSON-Trick: <strong class="text-white">{{ stats.json_count }}</strong></span>
-                    <span>Playwright: <strong class="text-white">{{ stats.playwright_count }}</strong></span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Screenshot Section (Hidden by default, shown if image exists) -->
-        <div id="screenshot-card" class="glass-card p-6 rounded-2xl hidden">
-            <div class="flex items-center justify-between mb-4">
-                <h2 class="text-lg font-semibold text-white flex items-center space-x-2">
-                    <i data-lucide="image" class="text-rose-400 w-5 h-5"></i>
-                    <span>Letzter Fehler-Screenshot (Browser-Diagnose)</span>
-                </h2>
-                <a href="/admin/debug-screenshot" target="_blank" class="text-xs text-blue-400 hover:underline">In neuem Tab öffnen</a>
-            </div>
-            <p class="text-xs text-slate-400 mb-4">Dieser Screenshot zeigt den Zustand von Reddit, als das unauthentifizierte Scraping fehlschlug.</p>
-            <div class="border border-reddit-border rounded-xl overflow-hidden bg-reddit-dark flex justify-center">
-                <img id="debug-img" src="/admin/debug-screenshot" alt="Letzter Playwright Screenshot" class="max-w-full h-auto max-h-[450px] object-contain">
-            </div>
-        </div>
-
-        <!-- Request Logs Section -->
-        <div class="glass-card rounded-2xl overflow-hidden">
-            <div class="p-6 border-b border-reddit-border flex items-center justify-between">
-                <div class="flex items-center space-x-2">
-                    <i data-lucide="list-ordered" class="text-reddit-orange w-5 h-5"></i>
-                    <h2 class="text-lg font-semibold text-white">Letzte API-Anfragen (Max. 50)</h2>
-                </div>
-                <a href="/admin/logs/clear" onclick="return confirm('Möchtest du wirklich alle Logs löschen?')" class="flex items-center space-x-1.5 text-xs text-rose-400 hover:text-rose-300 font-medium px-3 py-1.5 rounded-lg border border-rose-500/20 hover:bg-rose-500/10 transition-all duration-200">
-                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                    <span>Logs leeren</span>
-                </a>
-            </div>
-            
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-reddit-dark/30 border-b border-reddit-border text-slate-400 text-xs font-semibold uppercase">
-                            <th class="p-4">Zeitstempel</th>
-                            <th class="p-4">Endpunkt</th>
-                            <th class="p-4">Target (Subreddit / Post)</th>
-                            <th class="p-4">Methode</th>
-                            <th class="p-4">Account</th>
-                            <th class="p-4">Dauer</th>
-                            <th class="p-4">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-reddit-border/30 text-sm">
-                        {% for log in logs %}
-                        <tr class="hover:bg-slate-800/20 transition-all duration-150">
-                            <td class="p-4 text-slate-400 font-mono text-xs">{{ log.timestamp.strftime('%d.%m.%Y %H:%M:%S') }}</td>
-                            <td class="p-4">
-                                <span class="px-2 py-0.5 rounded font-mono text-xs bg-slate-900 border border-reddit-border text-slate-300">
-                                    {{ log.endpoint }}
-                                </span>
-                            </td>
-                            <td class="p-4 font-medium text-white max-w-xs truncate">
-                                <span title="{{ log.target }}">{{ log.target }}</span>
-                            </td>
-                            <td class="p-4">
-                                {% if log.method_used == 'json' %}
-                                    <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                        JSON
-                                    </span>
-                                {% else %}
-                                    <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                                        Playwright
-                                    </span>
-                                {% endif %}
-                            </td>
-                            <td class="p-4">
-                                {% if log.reddit_username %}
-                                    <span class="inline-flex items-center text-xs px-2 py-0.5 rounded font-medium bg-slate-700/30 text-slate-300 border border-slate-700/50">
-                                        {{ log.reddit_username }}
-                                    </span>
-                                {% else %}
-                                    <span class="text-xs text-slate-500">-</span>
-                                {% endif %}
-                            </td>
-                            <td class="p-4 font-mono text-slate-300">{{ log.response_time_ms }} ms</td>
-                            <td class="p-4">
-                                {% if log.status_code == 200 %}
-                                    <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                        <i data-lucide="check" class="w-3.5 h-3.5 mr-1"></i> 200 OK
-                                    </span>
-                                {% else %}
-                                    <span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20 cursor-help" title="{{ log.error_message }}">
-                                        <i data-lucide="alert-circle" class="w-3.5 h-3.5 mr-1"></i> {{ log.status_code }} Error
-                                    </span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="6" class="p-8 text-center text-slate-500">
-                                <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
-                                Keine Logs vorhanden.
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                    
+                    <div class="md:col-span-2 pt-2">
+                        <button type="submit" class="w-full flex items-center justify-center space-x-2 bg-reddit-orange hover:bg-reddit-orange/90 text-white font-semibold py-2.5 px-4 rounded-xl transition-all duration-300 hover:scale-[1.005] active:scale-[0.995]">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            <span>Konto registrieren</span>
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </main>

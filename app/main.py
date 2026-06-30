@@ -408,9 +408,10 @@ async def admin_dashboard(
     # Berechne Statistiken
     total_requests = db.query(APIRequestLog).count()
     success_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code == 200).count()
-    error_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code != 200).count()
+    client_error_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code.between(400, 499)).count()
+    api_error_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code >= 500).count()
     
-    success_rate = (success_requests / total_requests * 100) if total_requests > 0 else 0
+    success_rate = (success_requests / (success_requests + api_error_requests) * 100) if (success_requests + api_error_requests) > 0 else 100.0
     
     # Durchschnittliche Antwortzeit (nur erfolgreiche)
     avg_duration = db.query(APIRequestLog).filter(APIRequestLog.status_code == 200)
@@ -421,6 +422,10 @@ async def admin_dashboard(
         
     json_count = db.query(APIRequestLog).filter(APIRequestLog.method_used == "json").count()
     playwright_count = db.query(APIRequestLog).filter(APIRequestLog.method_used == "playwright").count()
+    
+    # Auslastung berechnen
+    current_load, max_24h_load = scrape_queue.calculate_system_load()
+    avg_wait = sum(scrape_queue.wait_times) / len(scrape_queue.wait_times) if scrape_queue.wait_times else 0.0
     
     # Accounts aus DB laden
     db_accounts = db.query(RedditAccount).all()
@@ -448,11 +453,15 @@ async def admin_dashboard(
     stats = {
         "total": total_requests,
         "success": success_requests,
-        "error": error_requests,
+        "client_errors": client_error_requests,
+        "api_errors": api_error_requests,
         "success_rate": f"{success_rate:.1f}%",
         "avg_duration_ms": avg_duration_ms,
         "json_count": json_count,
-        "playwright_count": playwright_count
+        "playwright_count": playwright_count,
+        "current_load": round(current_load, 1),
+        "max_24h_load": round(max_24h_load, 1),
+        "avg_wait_seconds": round(avg_wait, 1)
     }
     
     return templates.TemplateResponse(

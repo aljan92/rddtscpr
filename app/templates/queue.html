@@ -96,9 +96,9 @@
             {% endif %}
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
             <!-- Settings Card -->
-            <div class="glass-card p-6 rounded-2xl flex flex-col justify-between">
+            <div class="glass-card p-6 rounded-2xl flex flex-col justify-between lg:col-span-1">
                 <div class="space-y-4">
                     <h2 class="text-lg font-semibold text-white flex items-center space-x-2">
                         <i data-lucide="sliders" class="w-5 h-5 text-reddit-orange"></i>
@@ -127,41 +127,61 @@
                 </div>
             </div>
 
-            <!-- Stats Card (Spans 2 cols) -->
-            <div class="glass-card p-6 rounded-2xl lg:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6">
-                <!-- Stat 1 -->
+            <!-- Stats Card & Sparkline (Spans 3 cols) -->
+            <div class="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Card 1: Warteliste Info -->
                 <div class="bg-reddit-dark/40 border border-reddit-border/50 rounded-xl p-5 flex flex-col justify-between">
                     <div>
-                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Anfragen Gesamt</span>
-                        <h3 class="text-3xl font-bold text-white mt-1" id="stat-total">{{ stats.total }}</h3>
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Warteliste</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span class="text-3xl font-bold text-amber-500" id="stat-pending">{{ stats.pending }}</span>
+                            <span class="text-xs text-slate-500">wartend</span>
+                        </div>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span class="text-xl font-bold text-emerald-500" id="stat-active">{{ stats.active }}</span>
+                            <span class="text-xs text-slate-500">in Arbeit/Cooldown</span>
+                        </div>
                     </div>
-                    <div class="flex items-center space-x-2 text-xs text-slate-400 mt-4">
-                        <i data-lucide="activity" class="w-4 h-4 text-reddit-orange"></i>
-                        <span>Aktuelle Warteschlangenlänge</span>
-                    </div>
-                </div>
-
-                <!-- Stat 2 -->
-                <div class="bg-reddit-dark/40 border border-reddit-border/50 rounded-xl p-5 flex flex-col justify-between">
-                    <div>
-                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Wartend</span>
-                        <h3 class="text-3xl font-bold text-amber-500 mt-1" id="stat-pending">{{ stats.pending }}</h3>
-                    </div>
-                    <div class="flex items-center space-x-2 text-xs text-slate-400 mt-4">
+                    <div class="flex items-center space-x-2 text-xs text-slate-400 mt-4 border-t border-reddit-border/30 pt-3">
                         <i data-lucide="clock" class="w-4 h-4 text-amber-500"></i>
-                        <span>Warten auf Zuweisung</span>
+                        <span>Ø Wartezeit: <strong class="text-white" id="stat-avg-wait">{{ stats.avg_wait_seconds }}s</strong></span>
                     </div>
                 </div>
 
-                <!-- Stat 3 -->
+                <!-- Card 2: Systemauslastung -->
                 <div class="bg-reddit-dark/40 border border-reddit-border/50 rounded-xl p-5 flex flex-col justify-between">
                     <div>
-                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">In Verarbeitung</span>
-                        <h3 class="text-3xl font-bold text-emerald-500 mt-1" id="stat-active">{{ stats.active }}</h3>
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Auslastung</span>
+                        <h3 class="text-3xl font-bold text-white mt-1" id="stat-load">{{ stats.current_load }}%</h3>
                     </div>
-                    <div class="flex items-center space-x-2 text-xs text-slate-400 mt-4">
-                        <i data-lucide="play-circle" class="w-4 h-4 text-emerald-500"></i>
-                        <span>Cooldown oder Scraping läuft</span>
+                    <div class="flex items-center justify-between text-xs text-slate-400 mt-4 border-t border-reddit-border/30 pt-3">
+                        <span class="flex items-center space-x-1.5">
+                            <span class="inline-block w-2.5 h-2.5 rounded-full bg-reddit-orange shadow shadow-reddit-orange/50"></span>
+                            <span>24h Peak: <strong class="text-white" id="stat-load-peak">{{ stats.max_24h_load }}%</strong></span>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Card 3: Sparkline Load History (SVG) -->
+                <div class="bg-reddit-dark/40 border border-reddit-border/50 rounded-xl p-5 flex flex-col justify-between">
+                    <div>
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Auslastung (5 Min.)</span>
+                        <div class="h-16 w-full mt-2 relative" id="sparkline-container">
+                            <svg class="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none" id="sparkline-svg">
+                                <defs>
+                                    <linearGradient id="sparkline-grad" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="#FF4500" stop-opacity="0.3"></stop>
+                                        <stop offset="100%" stop-color="#FF4500" stop-opacity="0.0"></stop>
+                                    </linearGradient>
+                                </defs>
+                                <path d="" fill="url(#sparkline-grad)" id="sparkline-path-area"></path>
+                                <path d="" fill="none" stroke="#FF4500" stroke-width="2.5" stroke-linecap="round" id="sparkline-path-line"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-[9px] text-slate-500 mt-2">
+                        <span>Vor 5 Min</span>
+                        <span>Jetzt</span>
                     </div>
                 </div>
             </div>
@@ -251,6 +271,44 @@
                 </table>
             </div>
         </div>
+
+        <!-- Request Logs Section (Auto Refreshed) -->
+        <div class="glass-card rounded-2xl overflow-hidden mt-6">
+            <div class="p-6 border-b border-reddit-border flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i data-lucide="list-ordered" class="text-reddit-orange w-5 h-5"></i>
+                    <h2 class="text-lg font-semibold text-white">Letzte API-Anfragen (Max. 50)</h2>
+                </div>
+                <a href="/admin/logs/clear" onclick="return confirm('Möchtest du wirklich alle Logs löschen?')" class="flex items-center space-x-1.5 text-xs text-rose-400 hover:text-rose-300 font-medium px-3 py-1.5 rounded-lg border border-rose-500/20 hover:bg-rose-500/10 transition-all duration-200">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    <span>Logs leeren</span>
+                </a>
+            </div>
+            
+            <div class="overflow-x-auto w-full">
+                <table class="w-full text-left border-collapse" id="logs-table">
+                    <thead>
+                        <tr class="bg-reddit-dark/30 border-b border-reddit-border text-slate-400 text-xs font-semibold uppercase">
+                            <th class="p-4">Zeitstempel</th>
+                            <th class="p-4">Endpunkt</th>
+                            <th class="p-4">Target (Subreddit / Post)</th>
+                            <th class="p-4">Methode</th>
+                            <th class="p-4">Account</th>
+                            <th class="p-4">Dauer</th>
+                            <th class="p-4">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-reddit-border/30 text-sm" id="logs-tbody">
+                        <tr id="logs-empty-row">
+                            <td colspan="7" class="p-8 text-center text-slate-500">
+                                <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
+                                Keine Logs vorhanden.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </main>
 
     <!-- Footer -->
@@ -272,12 +330,34 @@
                 const data = await response.json();
                 
                 // Stats aktualisieren
-                document.getElementById('stat-total').innerText = data.stats.total;
                 document.getElementById('stat-pending').innerText = data.stats.pending;
                 document.getElementById('stat-active').innerText = data.stats.active;
+                document.getElementById('stat-avg-wait').innerText = data.stats.avg_wait_seconds + 's';
+                document.getElementById('stat-load').innerText = data.stats.current_load + '%';
+                document.getElementById('stat-load-peak').innerText = data.stats.max_24h_load + '%';
                 
+                // Sparkline aktualisieren
+                const sparkline = data.sparkline || [];
+                if (sparkline.length > 1) {
+                    const maxVal = Math.max(...sparkline, 100);
+                    const points = sparkline.map((val, idx) => {
+                        const x = (idx / (sparkline.length - 1)) * 100;
+                        const y = 100 - (val / maxVal) * 90; // clamp so it doesn't touch the top border perfectly
+                        return {x, y};
+                    });
+                    
+                    const linePath = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+                    const areaPath = `${linePath} L 100 100 L 0 100 Z`;
+                    
+                    document.getElementById('sparkline-path-line').setAttribute('d', linePath);
+                    document.getElementById('sparkline-path-area').setAttribute('d', areaPath);
+                } else {
+                    document.getElementById('sparkline-path-line').setAttribute('d', '');
+                    document.getElementById('sparkline-path-area').setAttribute('d', '');
+                }
+
+                // Queue Table aktualisieren
                 const tbody = document.getElementById('queue-tbody');
-                
                 if (data.requests.length === 0) {
                     tbody.innerHTML = `
                         <tr id="empty-row">
@@ -289,59 +369,115 @@
                             </td>
                         </tr>
                     `;
-                    lucide.createIcons();
-                    return;
+                } else {
+                    let html = '';
+                    data.requests.forEach(req => {
+                        let badgeClass = '';
+                        let dotClass = '';
+                        if (req.status === 'Wartend') {
+                            badgeClass = 'bg-amber-500/10 border-amber-500/20 text-amber-500';
+                            dotClass = 'bg-amber-500';
+                        } else if (req.status === 'Cooldown') {
+                            badgeClass = 'bg-blue-500/10 border-blue-500/20 text-blue-400';
+                            dotClass = 'bg-blue-500 animate-pulse';
+                        } else {
+                            badgeClass = 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400';
+                            dotClass = 'bg-emerald-500 animate-ping';
+                        }
+                        
+                        html += `
+                            <tr class="hover:bg-slate-800/10 transition-colors">
+                                <td class="px-6 py-4 font-mono text-xs text-slate-400">${req.age_seconds}s</td>
+                                <td class="px-6 py-4">
+                                    <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                                        ${req.action}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 max-w-xs truncate font-medium text-slate-300" title="${req.target}">
+                                    ${req.target}
+                                </td>
+                                <td class="px-6 py-4">
+                                    <span class="flex items-center space-x-1.5 text-slate-300">
+                                        <i data-lucide="user" class="w-4 h-4 text-slate-500"></i>
+                                        <span>${req.account}</span>
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 text-center font-mono font-medium text-slate-300">${req.attempts} / 3</td>
+                                <td class="px-6 py-4 text-right">
+                                    <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold ${badgeClass} border">
+                                        <span class="w-1.5 h-1.5 rounded-full ${dotClass}"></span>
+                                        <span>${req.status}</span>
+                                    </span>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    tbody.innerHTML = html;
                 }
-                
-                let html = '';
-                data.requests.forEach(req => {
-                    let badgeClass = '';
-                    let dotClass = '';
-                    if (req.status === 'Wartend') {
-                        badgeClass = 'bg-amber-500/10 border-amber-500/20 text-amber-500';
-                        dotClass = 'bg-amber-500';
-                    } else if (req.status === 'Cooldown') {
-                        badgeClass = 'bg-blue-500/10 border-blue-500/20 text-blue-400';
-                        dotClass = 'bg-blue-500 animate-pulse';
-                    } else {
-                        badgeClass = 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400';
-                        dotClass = 'bg-emerald-500 animate-ping';
-                    }
-                    
-                    html += `
-                        <tr class="hover:bg-slate-800/10 transition-colors">
-                            <td class="px-6 py-4 font-mono text-xs text-slate-400">${req.age_seconds}s</td>
-                            <td class="px-6 py-4">
-                                <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700">
-                                    ${req.action}
-                                </span>
-                            </td>
-                            <td class="px-6 py-4 max-w-xs truncate font-medium text-slate-300" title="${req.target}">
-                                ${req.target}
-                            </td>
-                            <td class="px-6 py-4">
-                                <span class="flex items-center space-x-1.5 text-slate-300">
-                                    <i data-lucide="user" class="w-4 h-4 text-slate-500"></i>
-                                    <span>${req.account}</span>
-                                </span>
-                            </td>
-                            <td class="px-6 py-4 text-center font-mono font-medium text-slate-300">${req.attempts} / 3</td>
-                            <td class="px-6 py-4 text-right">
-                                <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold ${badgeClass} border">
-                                    <span class="w-1.5 h-1.5 rounded-full ${dotClass}"></span>
-                                    <span>${req.status}</span>
-                                </span>
+
+                // Logs Table aktualisieren
+                const logsTbody = document.getElementById('logs-tbody');
+                if (!data.logs || data.logs.length === 0) {
+                    logsTbody.innerHTML = `
+                        <tr id="logs-empty-row">
+                            <td colspan="7" class="p-8 text-center text-slate-500">
+                                <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
+                                Keine Logs vorhanden.
                             </td>
                         </tr>
                     `;
-                });
+                } else {
+                    let logsHtml = '';
+                    data.logs.forEach(log => {
+                        let methodBadge = '';
+                        if (log.method_used === 'json') {
+                            methodBadge = '<span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">JSON</span>';
+                        } else {
+                            methodBadge = '<span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">Playwright</span>';
+                        }
+                        
+                        let statusBadge = '';
+                        if (log.status_code === 200) {
+                            statusBadge = '<span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><i data-lucide="check" class="w-3.5 h-3.5 mr-1"></i> 200 OK</span>';
+                        } else if (log.status_code >= 400 && log.status_code < 500) {
+                            statusBadge = `<span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/20 cursor-help" title="${log.error_message}"><i data-lucide="alert-triangle" class="w-3.5 h-3.5 mr-1"></i> ${log.status_code} Client Error</span>`;
+                        } else {
+                            statusBadge = `<span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20 cursor-help" title="${log.error_message}"><i data-lucide="alert-circle" class="w-3.5 h-3.5 mr-1"></i> ${log.status_code} API Error</span>`;
+                        }
+                        
+                        logsHtml += `
+                            <tr class="hover:bg-slate-800/20 transition-all duration-150">
+                                <td class="p-4 text-slate-400 font-mono text-xs">${log.timestamp}</td>
+                                <td class="p-4">
+                                    <span class="px-2 py-0.5 rounded font-mono text-xs bg-slate-900 border border-reddit-border text-slate-300">
+                                        ${log.endpoint}
+                                    </span>
+                                </td>
+                                <td class="p-4 font-medium text-white max-w-xs truncate">
+                                    <span title="${log.target}">${log.target}</span>
+                                </td>
+                                <td class="p-4">${methodBadge}</td>
+                                <td class="p-4">
+                                    <span class="inline-flex items-center text-xs px-2 py-0.5 rounded font-medium bg-slate-700/30 text-slate-300 border border-slate-700/50">
+                                        ${log.reddit_username}
+                                    </span>
+                                </td>
+                                <td class="p-4 font-mono text-slate-300">${log.response_time_ms} ms</td>
+                                <td class="p-4">${statusBadge}</td>
+                            </tr>
+                        `;
+                    });
+                    logsTbody.innerHTML = logsHtml;
+                }
                 
-                tbody.innerHTML = html;
                 lucide.createIcons();
             } catch (err) {
                 console.error("Fehler beim Abrufen des Queue-Status:", err);
             }
         }
+
+        // Einmal direkt aufrufen
+        updateQueue();
 
         // Alle 3 Sekunden pollen
         setInterval(updateQueue, 3000);
