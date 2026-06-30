@@ -300,48 +300,52 @@ class ScrapeQueueManager:
                 await asyncio.sleep(10)
 
     async def _refresh_account_session(self, db: Session, account: RedditAccount) -> bool:
-        from app.auth import get_account_cookies, update_session_state_with_cookies
-        import httpx
-        
-        cookies = get_account_cookies(account.session_state)
-        if not cookies:
+        if not account.session_state:
             logger.info(f"Session-Refresh: Keine Cookies für {account.username} vorhanden. Starte Auto-Login...")
             return await self._auto_login_account(db, account)
             
-        test_url = "https://www.reddit.com/r/popular.json"
-        proxies = {"all://": account.proxy_url} if account.proxy_url else None
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json"
-        }
+        from playwright.async_api import async_playwright
+        from app.scraper import launch_browser
+        import json
         
-        # Cookies explizit für beide Domains (.reddit.com und www.reddit.com) in den CookieJar laden
-        jar = httpx.Cookies()
-        for name, value in cookies.items():
-            jar.set(name, value, domain=".reddit.com", path="/")
-            jar.set(name, value, domain="www.reddit.com", path="/")
+        logger.info(f"Session-Refresh: Prüfe Session für '{account.username}' via Playwright...")
         
         try:
-            async with httpx.AsyncClient(headers=headers, cookies=jar, proxies=proxies, timeout=15.0, follow_redirects=True) as client:
-                response = await client.get(test_url, params={"limit": 1})
-                
-                if response.status_code == 200:
-                    logger.info(f"Session-Refresh: Session für '{account.username}' ist GÜLTIG. Cookies werden aktualisiert, Account wird reaktiviert...")
-                    new_state = update_session_state_with_cookies(account.session_state, client.cookies)
-                    account.session_state = new_state
-                    account.failure_count = 0
-                    account.is_active = True
-                    db.commit()
-                    return True
-                elif response.status_code in [401, 403]:
-                    logger.warning(f"Session-Refresh: Session für '{account.username}' lieferte HTTP {response.status_code}. Cookies abgelaufen, starte Auto-Login...")
-                    return await self._auto_login_account(db, account)
-                else:
-                    logger.warning(f"Session-Refresh: Unerwarteter Status Code {response.status_code} für '{account.username}'. Starte Auto-Login Fallback...")
-                    return await self._auto_login_account(db, account)
+            async with async_playwright() as p:
+                browser, context, page = await launch_browser(p, account.session_state, account.proxy_url)
+                try:
+                    # Rufe die Test-URL über den echten Browser auf
+                    await page.goto("https://www.reddit.com/r/popular.json?limit=1", wait_until="domcontentloaded", timeout=30000)
+                    await page.wait_for_timeout(2000)
+                    
+                    content = ""
+                    pre_elem = await page.query_selector("pre")
+                    if pre_elem:
+                        content = await pre_elem.inner_text()
+                    else:
+                        content = await page.content()
+                        
+                    # Wenn wir echte Reddit-Daten sehen, ist die Session (Cookies) gültig!
+                    if "data" in content or "children" in content:
+                        logger.info(f"Session-Refresh: Session für '{account.username}' ist via Playwright GÜLTIG. Cookies werden aktualisiert...")
+                        new_state = await context.storage_state()
+                        account.session_state = json.dumps(new_state)
+                        account.failure_count = 0
+                        account.is_active = True
+                        db.commit()
+                        return True
+                    else:
+                        logger.warning(f"Session-Refresh: Keine JSON-Struktur im Browser-Inhalt gefunden. Vermute ungültige Session für '{account.username}'.")
+                finally:
+                    await page.close()
+                    await context.close()
+                    await browser.close()
         except Exception as e:
-            logger.error(f"Session-Refresh: Fehler beim Verbindungstest für '{account.username}': {e}. Starte Auto-Login Fallback...")
-            return await self._auto_login_account(db, account)
+            logger.error(f"Session-Refresh: Fehler beim Playwright-Verbindungstest für '{account.username}': {e}")
+            
+        # Wenn der Verbindungstest oder Cookie-Test fehlgeschlagen ist, starten wir Auto-Login als Fallback
+        logger.info(f"Session-Refresh: Verbindungstest fehlgeschlagen oder Session abgelaufen. Starte Auto-Login...")
+        return await self._auto_login_account(db, account)
 
     async def _auto_login_account(self, db: Session, account: RedditAccount) -> bool:
         from app.auth import login_to_reddit
