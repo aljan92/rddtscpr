@@ -148,8 +148,9 @@ class ScrapeQueueManager:
                 db.close()
 
     async def _process_request_concurrent(self, request: ScrapeRequest, account_id: int, current_priority: int):
-        db = SessionLocal()
+        db = None
         try:
+            db = SessionLocal()
             # Warteschlangen-Wartezeit erfassen
             wait_time = (datetime.utcnow() - request.created_at).total_seconds()
             self.wait_times.append(wait_time)
@@ -302,7 +303,6 @@ class ScrapeQueueManager:
                     else:
                         # Maximale Versuche erreicht
                         raise Exception(f"Fehlgeschlagen nach {request.attempts} Versuchen. Letzter Fehler: {scrape_error}")
-                        
         except Exception as final_exception:
             logger.error(f"Request endgültig fehlgeschlagen: {final_exception}")
             if not request.future.done():
@@ -311,7 +311,8 @@ class ScrapeQueueManager:
             # Account entsperren und Task abschließen
             self.busy_account_ids.discard(account_id)
             self.queue.task_done()
-            db.close()
+            if db:
+                db.close()
 
     def _select_best_account(self, db: Session, excluded_ids: set, busy_ids: set = None) -> RedditAccount:
         """Wählt das am längsten unbenutzte aktive Konto aus, das weder in excluded_ids noch in busy_ids liegt."""
