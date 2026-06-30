@@ -350,6 +350,9 @@ async def get_page_json(page) -> dict:
     if not content:
         content = await page.evaluate("() => document.body.innerText")
         
+    if not content or content.strip() == "":
+        raise Exception("Reddit lieferte eine leere Antwort. IP/Proxy connection failed or rate-limited (429).")
+        
     # Überprüfen, ob wir die Sicherheitsblock-Seite sehen
     if "blocked by network security" in content.lower() or "deine anfrage wurde von der netzwerksicherheit blockiert" in content.lower():
         raise Exception("Reddit blockiert die Verbindung (Netzwerksicherheits-Sperre). Proxy erforderlich.")

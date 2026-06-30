@@ -183,15 +183,24 @@ class ScrapeQueueManager:
                 
                 # Request mit anderem Account wiederholen
                 request.failed_account_ids.add(account.id)
-                if request.attempts < 3:
-                    logger.info(f"Re-enqueuing Request für einen weiteren Versuch mit anderem Account...")
+                if request.attempts < 4:
+                    wait_time = 5 if request.attempts == 1 else (10 if request.attempts == 2 else 30)
+                    logger.info(f"Request-Versuch {request.attempts} fehlgeschlagen. Starte verzögertes Re-enqueuing in {wait_time}s...")
                     request.status = "Wartend"
                     request.account_username = None
-                    # Zurück in die Queue legen
-                    await self.queue.put(request)
+                    
+                    # Verzögertes Re-enqueuing in einem separaten async Task, um den Queue-Worker nicht zu blockieren
+                    async def delayed_requeue(req, delay):
+                        await asyncio.sleep(delay)
+                        if self._running:
+                            logger.info(f"Delayed Re-enqueuing: Lege Request {req.id} (nach {delay}s Cooldown) wieder in die Queue und setze Fehlerausschlüsse zurück...")
+                            req.failed_account_ids.clear()
+                            await self.queue.put(req)
+                            
+                    asyncio.create_task(delayed_requeue(request, wait_time))
                 else:
                     # Maximale Versuche erreicht
-                    raise Exception(f"Fehlgeschlagen nach 3 Versuchen. Letzter Fehler: {scrape_error}")
+                    raise Exception(f"Fehlgeschlagen nach {request.attempts} Versuchen. Letzter Fehler: {scrape_error}")
                     
         except Exception as final_exception:
             logger.error(f"Request endgültig fehlgeschlagen: {final_exception}")
@@ -286,14 +295,25 @@ class ScrapeQueueManager:
         while self._running:
             try:
                 db = SessionLocal()
-                accounts = db.query(RedditAccount).filter(RedditAccount.is_active == True).all()
-                logger.info(f"Session-Refresh: Prüfe {len(accounts)} aktive Accounts...")
+                # Alle Accounts laden, um auch inaktive bei wiedererlangter Verbindung zu reaktivieren
+                accounts = db.query(RedditAccount).all()
+                logger.info(f"Session-Refresh: Prüfe {len(accounts)} Accounts (aktiv und inaktiv)...")
                 
                 for account in accounts:
                     if not self._running:
                         break
                     try:
-                        await self._refresh_account_session(db, account)
+                        was_active = account.is_active
+                        if not was_active:
+                            logger.info(f"Session-Refresh: Account '{account.username}' ist inaktiv. Versuche Reaktivierungs-Check...")
+                        
+                        success = await self._refresh_account_session(db, account)
+                        
+                        if success and not was_active:
+                            account.is_active = True
+                            account.failure_count = 0
+                            db.commit()
+                            logger.info(f"Session-Refresh: Account '{account.username}' wurde erfolgreich REAKTIVIERT und ist wieder einsatzbereit.")
                     except Exception as e:
                         logger.error(f"Fehler beim Refresh des Accounts '{account.username}': {e}")
                     await asyncio.sleep(5)
@@ -302,7 +322,8 @@ class ScrapeQueueManager:
             except Exception as e:
                 logger.error(f"Fehler im Session-Refresh-Loop: {e}")
                 
-            for _ in range(180):
+            # Alle 5 Minuten ausführen (30 * 10 Sekunden)
+            for _ in range(30):
                 if not self._running:
                     break
                 await asyncio.sleep(10)
