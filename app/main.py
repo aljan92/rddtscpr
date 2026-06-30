@@ -87,13 +87,20 @@ def check_rapidapi_access(request: Request):
     is_secret_valid = bool(request_secret == secret)
     
     if sandbox_mode:
-        sub = request.headers.get("x-sandbox-subscription") or request.headers.get("x-rapidapi-subscription")
-        is_sub_valid = bool(sub and sub.capitalize() in ["Basic", "Pro", "Ultra"])
+        sub = request.headers.get("x-sandbox-subscription") or request.headers.get("x-rapidapi-subscription") or ""
+        sub_lower = sub.lower()
+        
+        is_sub_valid = False
+        # Prüfen, ob das Wort basic, pro oder ultra im String enthalten ist
+        for plan_name in ["basic", "pro", "ultra"]:
+            if plan_name in sub_lower:
+                is_sub_valid = True
+                break
         
         if not (is_sub_valid or is_secret_valid):
             raise HTTPException(
                 status_code=403,
-                detail="Invalid X-RapidAPI-Proxy-Secret header."
+                detail="Invalid X-RapidAPI-Proxy-Secret or invalid X-RapidAPI-Subscription plan."
             )
     else:
         if not is_secret_valid:
@@ -255,10 +262,12 @@ async def api_post_comments(
         if settings.get("sandbox_mode", True) and not subscription:
             subscription = request.headers.get("x-sandbox-subscription")
             
-        if not subscription:
-            subscription = "Basic"
-            
-        if subscription.lower() == "basic":
+        sub_str = (subscription or "").lower()
+        
+        # Bestimmen, ob wir Pro oder Ultra haben
+        is_premium = ("pro" in sub_str) or ("ultra" in sub_str)
+        
+        if not is_premium:
             raise HTTPException(
                 status_code=403,
                 detail="The 'load_more' feature is restricted to Pro and Ultra plans. Please upgrade your subscription."
