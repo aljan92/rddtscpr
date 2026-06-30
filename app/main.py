@@ -462,6 +462,56 @@ def make_session_state_from_cookie(cookie_val: str) -> str:
         
     return json.dumps({"cookies": cookies_list})
 
+def format_proxy_string(proxy_str: str) -> str | None:
+    """
+    Formatiert einen Proxy-String in das von httpx verlangte Format.
+    Erkennt und konvertiert das Format host:port:user:pass in http://user:pass@host:port.
+    Fügt automatisch http:// als Schema hinzu, falls es fehlt.
+    """
+    if not proxy_str:
+        return None
+        
+    proxy_str = proxy_str.strip()
+    if not proxy_str:
+        return None
+        
+    # Entferne eventuelle Anführungszeichen
+    if (proxy_str.startswith('"') and proxy_str.endswith('"')) or (proxy_str.startswith("'") and proxy_str.endswith("'")):
+        proxy_str = proxy_str[1:-1].strip()
+
+    # Fall: host:port:user:pass (Evomi Standard-Format aus Zwischenablage)
+    # z.B. gate.evomi.com:1000:username:passwort
+    parts = proxy_str.split(":")
+    # Falls das Schema 'http://' oder 'https://' vorne steht, entfernen wir es temporär zum Parsen der Doppelpunkte
+    has_scheme = False
+    scheme = "http"
+    if proxy_str.lower().startswith("http://"):
+        proxy_str_clean = proxy_str[7:]
+        has_scheme = True
+    elif proxy_str.lower().startswith("https://"):
+        proxy_str_clean = proxy_str[8:]
+        has_scheme = True
+        scheme = "https"
+    else:
+        proxy_str_clean = proxy_str
+        
+    clean_parts = proxy_str_clean.split(":")
+    
+    # host:port:user:pass hat genau 4 Teile (z.B. gate.evomi.com, 1000, user, pass)
+    if len(clean_parts) == 4:
+        host, port, user, password = clean_parts
+        return f"http://{user}:{password}@{host}:{port}"
+        
+    # Falls kein Schema vorhanden ist, aber das Format ansonsten okay ist, http:// davorschalten
+    if not has_scheme:
+        # Falls es user:pass@host:port ist
+        if "@" in proxy_str:
+            return f"http://{proxy_str}"
+        # Falls es nur host:port ist
+        return f"http://{proxy_str}"
+        
+    return proxy_str
+
 def make_session_state_from_fields(
     reddit_session: str = None,
     loid: str = None,
@@ -528,8 +578,8 @@ async def admin_add_account(
         new_acc = RedditAccount(
             username=username.strip(),
             password=password.strip(),
-            proxy_url=proxy_url.strip() if proxy_url else None,
-            fallback_proxy_url=fallback_proxy_url.strip() if fallback_proxy_url else None,
+            proxy_url=format_proxy_string(proxy_url),
+            fallback_proxy_url=format_proxy_string(fallback_proxy_url),
             session_state=session_state,
             is_active=True if session_state else False
         )
@@ -816,8 +866,8 @@ async def admin_edit_account(
         acc.username = username.strip()
         if password and password.strip():
             acc.password = password.strip()
-        acc.proxy_url = proxy_url.strip() if proxy_url else None
-        acc.fallback_proxy_url = fallback_proxy_url.strip() if fallback_proxy_url else None
+        acc.proxy_url = format_proxy_string(proxy_url)
+        acc.fallback_proxy_url = format_proxy_string(fallback_proxy_url)
         
         new_state = None
         if cookie_combined and cookie_combined.strip():
