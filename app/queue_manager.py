@@ -9,6 +9,14 @@ from app.scraper import get_subreddit_posts, get_post_comments
 
 logger = logging.getLogger("rddtscpr.queue")
 
+def is_temporary_network_issue(err: Exception) -> bool:
+    """Prüft, ob es sich um einen temporären Proxy- oder Netzwerkfehler handelt."""
+    err_msg_lower = str(err).lower()
+    return any(
+        x in err_msg_lower 
+        for x in ["429", "too many requests", "timeout", "connect", "503", "502", "network security", "blocked", "leere antwort"]
+    )
+
 class ScrapeRequest:
     def __init__(self, action: str, params: dict, future: asyncio.Future, is_playground: bool = False):
         self.id = str(uuid.uuid4())
@@ -22,14 +30,19 @@ class ScrapeRequest:
         self.created_at = datetime.utcnow()
         self.is_playground = is_playground
 
+    def __lt__(self, other):
+        # Fallback-Vergleich für die PriorityQueue
+        return self.created_at < other.created_at
+
 class ScrapeQueueManager:
     def __init__(self):
-        self.queue = asyncio.Queue()
+        self.queue = asyncio.PriorityQueue()
         self.worker_task = None
         self.refresh_task = None
         self._running = False
         self.cooldown_seconds = 3.0  # Mindestabstand zwischen Zugriffen desselben Accounts
         self.active_requests = {}  # id -> ScrapeRequest
+        self.busy_account_ids = set()  # In-Memory Sperre für Accounts, die gerade arbeiten
 
     def start(self):
         if not self._running:
@@ -55,74 +68,94 @@ class ScrapeQueueManager:
         logger.info("ScrapeQueueManager beendet.")
 
     async def enqueue(self, action: str, params: dict, is_playground: bool = False) -> tuple[list, str, str]:
-        """Reiht einen Request ein und wartet asynchron auf das Ergebnis."""
+        """Reiht einen Request in die PriorityQueue ein und wartet asynchron auf das Ergebnis."""
         if not self._running:
             self.start()
             
         future = asyncio.get_running_loop().create_future()
         request = ScrapeRequest(action, params, future, is_playground)
         self.active_requests[request.id] = request
-        await self.queue.put(request)
+        
+        # Neue Requests bekommen standardmäßig Priorität 10
+        # Format in PriorityQueue: (priority, timestamp, request)
+        await self.queue.put((10, time.time(), request))
         try:
             return await future
         finally:
             self.active_requests.pop(request.id, None)
 
     async def _worker_loop(self):
+        logger.info("Queue Worker-Loop gestartet.")
         while self._running:
             try:
-                request = await self.queue.get()
+                # Element holen: (priority, timestamp, request)
+                priority, timestamp, request = await self.queue.get()
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Fehler im Queue Worker-Loop: {e}")
+                logger.error(f"Fehler im Queue Worker-Loop beim Holen: {e}")
                 await asyncio.sleep(1)
                 continue
             
+            db = SessionLocal()
             try:
-                await self._process_request(request)
+                # Einen Account suchen, der aktiv, nicht beschäftigt und nicht für diese Anfrage ausgeschlossen ist
+                account = self._select_best_account(db, request.failed_account_ids, self.busy_account_ids)
+                
+                if not account:
+                    # Kein freier Account vorhanden. Request zurücklegen (mit gleicher Priorität).
+                    # Um eine CPU-intensive Endlosschleife zu verhindern, schlafen wir kurz verzögert.
+                    db.close()
+                    async def put_back():
+                        await asyncio.sleep(0.5)
+                        if self._running:
+                            await self.queue.put((priority, timestamp, request))
+                    asyncio.create_task(put_back())
+                    self.queue.task_done()
+                    continue
+                
+                # Account sperren
+                self.busy_account_ids.add(account.id)
+                request.account_username = account.username
+                
+                # Request asynchron in Hintergrund-Task ausführen, damit der Worker blockierungsfrei bleibt
+                asyncio.create_task(self._process_request_concurrent(request, account.id, priority))
+                
             except Exception as e:
-                logger.error(f"Fehler bei der Verarbeitung in der Queue: {e}")
+                logger.error(f"Fehler bei der Account-Auswahl im Worker-Loop: {e}")
             finally:
-                self.queue.task_done()
+                db.close()
 
-    async def _process_request(self, request: ScrapeRequest):
-        request.attempts += 1
+    async def _process_request_concurrent(self, request: ScrapeRequest, account_id: int, current_priority: int):
         db = SessionLocal()
-        
         try:
-            # 1. Besten Account finden
-            account = self._select_best_account(db, request.failed_account_ids)
-            if not account:
-                # Kein Account verfügbar (alle gesperrt oder keiner angelegt)
-                error_msg = "Kein aktiver Reddit-Account in der Datenbank vorhanden."
-                logger.error(error_msg)
-                request.future.set_exception(Exception(error_msg))
+            account = db.query(RedditAccount).filter(RedditAccount.id == account_id).first()
+            if not account or not account.is_active:
+                logger.warning(f"Gewählter Account ID {account_id} ist nicht mehr aktiv oder vorhanden.")
+                # Request wieder einreihen
+                await self.queue.put((current_priority, time.time(), request))
                 return
 
-            request.account_username = account.username
-
-            # 2. Cooldown einhalten
+            request.attempts += 1
             request.status = "Cooldown"
+            
+            # Cooldown für diesen Account einhalten (schläft nur in diesem Task!)
             await self._enforce_cooldown(account)
 
-            # 3. Account als verwendet markieren
+            # Account als verwendet markieren
             account.last_used_at = datetime.utcnow()
             db.commit()
 
-            # Parameter vorbereiten
             session_state = account.session_state
-            # Haupt-Proxy verwenden
             proxy_url = account.proxy_url
 
             logger.info(f"Verarbeite Request '{request.action}' (Versuch {request.attempts}) mit Account '{account.username}'")
 
             try:
-                # 4. Request ausführen
                 request.status = "Scraping"
                 data, method_used, new_session = await self._execute_scrape(request.action, request.params, session_state, proxy_url)
                 
-                # Erfolg: Counter zurücksetzen, Request-Zähler erhöhen und Ergebnis zurückgeben
+                # Erfolg: Zähler zurücksetzen
                 account.failure_count = 0
                 if new_session:
                     account.session_state = new_session
@@ -132,32 +165,23 @@ class ScrapeQueueManager:
                 request.future.set_result((data, method_used, account.username))
                 
             except ValueError as val_error:
-                # Client-Fehler (z.B. Subreddit existiert nicht). Kein Failover/Sperren des Accounts!
-                logger.warning(f"Client-Fehler beim Scraping (z.B. 404/Private/Gesperrt): {val_error}")
+                # Client-Fehler (z.B. Subreddit existiert nicht). Kein Failover/Sperren!
+                logger.warning(f"Client-Fehler beim Scraping: {val_error}")
                 request.future.set_exception(val_error)
-                return
+                
             except Exception as scrape_error:
                 logger.warning(f"Fehler beim Scraping mit Haupt-Proxy für Account '{account.username}': {scrape_error}")
                 
-                # Prüfen, ob es sich um ein temporäres Netzwerk-, Proxy- oder Rate-Limit-Problem handelt
-                err_msg_lower = str(scrape_error).lower()
-                is_temporary_network_issue = any(
-                    x in err_msg_lower 
-                    for x in ["429", "too many requests", "timeout", "connect", "503", "502", "network security", "blocked"]
-                )
+                is_temp = is_temporary_network_issue(scrape_error)
+                fallback_success = False
                 
-                if is_temporary_network_issue:
-                    logger.warning(f"Temporäres Netzwerk/Proxy/Rate-Limit-Problem beim Scraping: {scrape_error}. Account '{account.username}' wird nicht bestraft.")
-                else:
-                    account.failure_count = (account.failure_count or 0) + 1
-                    db.commit()
-                
-                # Fallback-Proxy versuchen, falls definiert
+                # Fallback-Proxy verwenden, falls definiert
                 if account.fallback_proxy_url:
                     logger.info(f"Probiere Fallback-Proxy für Account '{account.username}'...")
                     try:
                         request.status = "Scraping"
                         data, method_used, new_session = await self._execute_scrape(request.action, request.params, session_state, account.fallback_proxy_url)
+                        
                         account.failure_count = 0
                         if new_session:
                             account.session_state = new_session
@@ -165,54 +189,68 @@ class ScrapeQueueManager:
                             account.request_count = (account.request_count or 0) + 1
                         db.commit()
                         request.future.set_result((data, method_used, account.username))
-                        return
+                        fallback_success = True
                     except ValueError as val_error:
                         logger.warning(f"Client-Fehler beim Scraping über Fallback-Proxy: {val_error}")
                         request.future.set_exception(val_error)
                         return
                     except Exception as fallback_error:
                         logger.error(f"Fallback-Proxy für Account '{account.username}' ebenfalls fehlgeschlagen: {fallback_error}")
-                        # Session-Cookies werden nicht automatisch gelöscht, um manuelle Cookies zu schonen.
+                        # Der letzte Fehler gilt
+                        scrape_error = fallback_error
+                        is_temp = is_temporary_network_issue(fallback_error)
                 
-                # Wenn auch der Fallback-Proxy fehlschlägt (oder kein Fallback definiert war):
-                # failure_count wurde bereits oben (falls kein temporärer Fehler) erhöht, hier nur prüfen ob Schwelle erreicht
-                if account.failure_count >= 3:
-                    account.is_active = False
-                    logger.error(f"Account '{account.username}' wurde nach {account.failure_count} aufeinanderfolgenden Fehlern DEAKTIVIERT.")
-                db.commit()
-                
-                # Request mit anderem Account wiederholen
-                request.failed_account_ids.add(account.id)
-                if request.attempts < 4:
-                    wait_time = 5 if request.attempts == 1 else (10 if request.attempts == 2 else 30)
-                    logger.info(f"Request-Versuch {request.attempts} fehlgeschlagen. Starte verzögertes Re-enqueuing in {wait_time}s...")
-                    request.status = "Wartend"
-                    request.account_username = None
+                if not fallback_success:
+                    if is_temp:
+                        # Temporärer Fehler: Account nicht bestrafen, nur Zeitstempel erneuern, damit er im Cooldown liegt
+                        logger.warning(f"Temporäres Problem bei '{account.username}'. Keine Deaktivierung. Temporärer Cooldown...")
+                        account.last_used_at = datetime.utcnow()
+                        db.commit()
+                    else:
+                        # Kritischer Fehler: Fehlerpunkte erhöhen
+                        account.failure_count = (account.failure_count or 0) + 1
+                        if account.failure_count >= 3:
+                            account.is_active = False
+                            logger.error(f"Account '{account.username}' wurde nach {account.failure_count} kritischen Fehlern DEAKTIVIERT.")
+                        db.commit()
                     
-                    # Verzögertes Re-enqueuing in einem separaten async Task, um den Queue-Worker nicht zu blockieren
-                    async def delayed_requeue(req, delay):
-                        await asyncio.sleep(delay)
-                        if self._running:
-                            logger.info(f"Delayed Re-enqueuing: Lege Request {req.id} (nach {delay}s Cooldown) wieder in die Queue und setze Fehlerausschlüsse zurück...")
-                            req.failed_account_ids.clear()
-                            await self.queue.put(req)
-                            
-                    asyncio.create_task(delayed_requeue(request, wait_time))
-                else:
-                    # Maximale Versuche erreicht
-                    raise Exception(f"Fehlgeschlagen nach {request.attempts} Versuchen. Letzter Fehler: {scrape_error}")
-                    
+                    # Request mit anderem Account wiederholen
+                    request.failed_account_ids.add(account.id)
+                    if request.attempts < 4:
+                        wait_time = 5 if request.attempts == 1 else (10 if request.attempts == 2 else 30)
+                        logger.info(f"Versuch {request.attempts} fehlgeschlagen. Re-enqueuing in {wait_time}s mit Priorität 0...")
+                        request.status = "Wartend"
+                        request.account_username = None
+                        
+                        # Verzögertes Re-enqueuing in einem separaten async Task, um den Worker-Loop nicht zu blockieren
+                        async def delayed_requeue(req, delay):
+                            await asyncio.sleep(delay)
+                            if self._running:
+                                logger.info(f"Delayed Re-enqueuing: Lege Request {req.id} (nach {delay}s) wieder in die Queue (Priorität 0)...")
+                                req.failed_account_ids.clear()
+                                await self.queue.put((0, time.time(), req))
+                                
+                        asyncio.create_task(delayed_requeue(request, wait_time))
+                    else:
+                        # Maximale Versuche erreicht
+                        raise Exception(f"Fehlgeschlagen nach {request.attempts} Versuchen. Letzter Fehler: {scrape_error}")
+                        
         except Exception as final_exception:
             logger.error(f"Request endgültig fehlgeschlagen: {final_exception}")
             request.future.set_exception(final_exception)
         finally:
+            # Account entsperren und Task abschließen
+            self.busy_account_ids.discard(account_id)
+            self.queue.task_done()
             db.close()
 
-    def _select_best_account(self, db: Session, excluded_ids: set) -> RedditAccount:
-        """Wählt das am längsten unbenutzte aktive Konto aus, das nicht in excluded_ids liegt."""
+    def _select_best_account(self, db: Session, excluded_ids: set, busy_ids: set = None) -> RedditAccount:
+        """Wählt das am längsten unbenutzte aktive Konto aus, das weder in excluded_ids noch in busy_ids liegt."""
         query = db.query(RedditAccount).filter(RedditAccount.is_active == True)
         if excluded_ids:
             query = query.filter(~RedditAccount.id.in_(excluded_ids))
+        if busy_ids:
+            query = query.filter(~RedditAccount.id.in_(busy_ids))
             
         accounts = query.all()
         if not accounts:
@@ -322,8 +360,8 @@ class ScrapeQueueManager:
             except Exception as e:
                 logger.error(f"Fehler im Session-Refresh-Loop: {e}")
                 
-            # Alle 5 Minuten ausführen (30 * 10 Sekunden)
-            for _ in range(30):
+            # Alle 1 Minute ausführen (6 * 10 Sekunden)
+            for _ in range(6):
                 if not self._running:
                     break
                 await asyncio.sleep(10)
