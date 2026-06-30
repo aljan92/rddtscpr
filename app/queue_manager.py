@@ -170,11 +170,10 @@ class ScrapeQueueManager:
                             db.commit()
                 
                 # Wenn auch der Fallback-Proxy fehlschlägt (oder kein Fallback definiert war):
-                # Account Fehler zählen
-                account.failure_count += 1
+                # failure_count wurde bereits oben (Zeile 144) erhöht, hier nur prüfen ob Schwelle erreicht
                 if account.failure_count >= 3:
                     account.is_active = False
-                    logger.error(f"Account '{account.username}' wurde nach 3 aufeinanderfolgenden Fehlern DEAKTIVIERT.")
+                    logger.error(f"Account '{account.username}' wurde nach {account.failure_count} aufeinanderfolgenden Fehlern DEAKTIVIERT.")
                 db.commit()
                 
                 # Request mit anderem Account wiederholen

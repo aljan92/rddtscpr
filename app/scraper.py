@@ -428,7 +428,7 @@ async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: s
                 if "data" not in payload:
                     os.makedirs("./app/data", exist_ok=True)
                     await page.screenshot(path="./app/data/last_error.png")
-                    raise Exception("Keine Datenstruktur in der Reddit-Antwort gefunden.")
+                    raise ValueError("Keine Datenstruktur in der Reddit-Antwort gefunden. Das Subreddit existiert möglicherweise nicht.")
                     
             new_state = await context.storage_state()
             new_session_state = json.dumps(new_state)
@@ -516,11 +516,19 @@ async def get_subreddit_posts(target: str, sort: str, timeframe: str, limit: int
         posts, new_session = await scrape_subreddit_posts_json(target, sort, timeframe, limit, session_state, proxy_url)
         logger.info("Subreddit-Posts erfolgreich via JSON-Trick geladen.")
         return posts, "json", new_session
+    except ValueError as ve:
+        # Client-Fehler (404, nicht existierendes Subreddit) sofort weiterwerfen,
+        # NICHT den Playwright-Fallback versuchen - das würde den Account unnötig bestrafen.
+        logger.warning(f"Client-Fehler beim Subreddit-Scraping (kein Retry): {ve}")
+        raise
     except Exception as e:
         logger.warning(f"JSON-Trick für Subreddit fehlgeschlagen: {e}. Starte Playwright Fallback...")
         try:
             posts, new_session = await scrape_subreddit_playwright_fallback(target, sort, timeframe, limit, session_state, proxy_url)
             return posts, "playwright", new_session
+        except ValueError as ve:
+            # Auch Playwright hat einen Client-Fehler erkannt
+            raise
         except Exception as pe:
             logger.error(f"Playwright Fallback ebenfalls fehlgeschlagen: {pe}")
             raise pe
@@ -538,11 +546,17 @@ async def get_post_comments(post_url: str, sort: str, limit: int, include_replie
         comments, new_session = await scrape_post_comments_json(post_url, sort, limit, include_replies, load_more, session_state, proxy_url)
         logger.info("Kommentare erfolgreich via JSON-Trick geladen.")
         return comments, "json", new_session
+    except ValueError as ve:
+        # Client-Fehler (404, ungültige URL) sofort weiterwerfen
+        logger.warning(f"Client-Fehler beim Kommentar-Scraping (kein Retry): {ve}")
+        raise
     except Exception as e:
         logger.warning(f"JSON-Trick für Kommentare fehlgeschlagen: {e}. Starte Playwright Fallback...")
         try:
             comments, new_session = await scrape_post_comments_playwright(post_url, sort, limit, include_replies, load_more, session_state, proxy_url)
             return comments, "playwright", new_session
+        except ValueError as ve:
+            raise
         except Exception as pe:
             logger.error(f"Playwright Fallback ebenfalls fehlgeschlagen: {pe}")
             raise pe
