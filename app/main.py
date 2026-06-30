@@ -711,16 +711,32 @@ async def admin_check_account_proxy(
             "https://": acc.proxy_url
         }
         
-        async with httpx.AsyncClient(proxies=proxies, timeout=10.0) as client:
-            # Wir rufen einen externen IP-Spiegel auf
-            res = await client.get("https://httpbin.org/ip")
-            if res.status_code == 200:
-                data = res.json()
-                returned_ip = data.get("origin", "Unbekannt")
-                logger.info(f"Proxy-Check erfolgreich. Erkannte IP: {returned_ip}")
-                return RedirectResponse(url=f"/admin/dashboard?success=Proxy-Verbindung+erfolgreich!+Deine+Proxy-IP+ist:+{returned_ip}", status_code=303)
-            else:
-                return RedirectResponse(url=f"/admin/dashboard?error=Proxy+antwortete+mit+Statuscode+{res.status_code}", status_code=303)
+        # Mehrere IP-Echo-Dienste als Fallback (httpbin.org ist notorisch unzuverlässig)
+        ip_check_services = [
+            ("https://api.ipify.org?format=json", lambda r: r.json().get("ip", "Unbekannt")),
+            ("https://ifconfig.me/ip", lambda r: r.text.strip()),
+            ("https://icanhazip.com", lambda r: r.text.strip()),
+            ("https://httpbin.org/ip", lambda r: r.json().get("origin", "Unbekannt")),
+        ]
+        
+        async with httpx.AsyncClient(proxies=proxies, timeout=15.0) as client:
+            last_error = None
+            for service_url, extract_ip in ip_check_services:
+                try:
+                    res = await client.get(service_url)
+                    if res.status_code == 200:
+                        returned_ip = extract_ip(res)
+                        logger.info(f"Proxy-Check erfolgreich via {service_url}. Erkannte IP: {returned_ip}")
+                        return RedirectResponse(url=f"/admin/dashboard?success=Proxy-Verbindung+erfolgreich!+Deine+Proxy-IP+ist:+{returned_ip}", status_code=303)
+                    else:
+                        last_error = f"{service_url} antwortete mit Status {res.status_code}"
+                        logger.warning(f"Proxy-Check: {last_error}, versuche nächsten Dienst...")
+                except Exception as service_err:
+                    last_error = f"{service_url}: {service_err}"
+                    logger.warning(f"Proxy-Check: {last_error}, versuche nächsten Dienst...")
+            
+            # Alle Dienste fehlgeschlagen
+            return RedirectResponse(url=f"/admin/dashboard?error=Proxy-Check+fehlgeschlagen.+Alle+IP-Dienste+nicht+erreichbar.+Letzter+Fehler:+{last_error}", status_code=303)
                 
     except Exception as e:
         logger.error(f"Fehler beim Prüfen des Proxys für {acc.username}: {e}")
