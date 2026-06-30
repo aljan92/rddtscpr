@@ -330,10 +330,11 @@ class ScrapeQueueManager:
                 response = await client.get(test_url, params={"limit": 1})
                 
                 if response.status_code == 200:
-                    logger.info(f"Session-Refresh: Session für '{account.username}' ist GÜLTIG. Cookies werden aktualisiert...")
+                    logger.info(f"Session-Refresh: Session für '{account.username}' ist GÜLTIG. Cookies werden aktualisiert, Account wird reaktiviert...")
                     new_state = update_session_state_with_cookies(account.session_state, client.cookies)
                     account.session_state = new_state
                     account.failure_count = 0
+                    account.is_active = True
                     db.commit()
                 elif response.status_code in [401, 403]:
                     logger.warning(f"Session-Refresh: Session für '{account.username}' lieferte HTTP {response.status_code}. Wir lassen die Cookies unangetastet, um sie nicht zu löschen.")
