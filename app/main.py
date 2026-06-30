@@ -438,10 +438,11 @@ async def admin_dashboard(
     # Berechne Statistiken
     total_requests = db.query(APIRequestLog).count()
     success_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code == 200).count()
-    client_error_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code.between(400, 499)).count()
+    client_error_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code.between(400, 498)).count()
+    timeout_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code == 499).count()
     api_error_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code >= 500).count()
     
-    success_rate = (success_requests / (success_requests + api_error_requests) * 100) if (success_requests + api_error_requests) > 0 else 100.0
+    success_rate = (success_requests / (success_requests + api_error_requests + timeout_requests) * 100) if (success_requests + api_error_requests + timeout_requests) > 0 else 100.0
     
     # Durchschnittliche Antwortzeit (nur erfolgreiche)
     avg_duration = db.query(APIRequestLog).filter(APIRequestLog.status_code == 200)
@@ -484,6 +485,7 @@ async def admin_dashboard(
         "total": total_requests,
         "success": success_requests,
         "client_errors": client_error_requests,
+        "timeouts": timeout_requests,
         "api_errors": api_error_requests,
         "success_rate": f"{success_rate:.1f}%",
         "avg_duration_ms": avg_duration_ms,

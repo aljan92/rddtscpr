@@ -419,10 +419,11 @@ class ScrapeQueueManager:
                     
                 total_requests = db.query(APIRequestLog).count()
                 success_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code == 200).count()
-                client_error_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code.between(400, 499)).count()
+                client_error_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code.between(400, 498)).count()
+                timeout_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code == 499).count()
                 api_error_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code >= 500).count()
                 
-                success_rate = (success_requests / (success_requests + api_error_requests) * 100) if (success_requests + api_error_requests) > 0 else 100.0
+                success_rate = (success_requests / (success_requests + api_error_requests + timeout_requests) * 100) if (success_requests + api_error_requests + timeout_requests) > 0 else 100.0
                 
                 avg_duration = db.query(APIRequestLog).filter(APIRequestLog.status_code == 200)
                 if success_requests > 0:
@@ -445,6 +446,7 @@ class ScrapeQueueManager:
                 "global_success_rate": f"{success_rate:.1f}%",
                 "global_api_errors": api_error_requests,
                 "global_client_errors": client_error_requests,
+                "global_timeouts": timeout_requests,
                 "global_avg_duration_ms": avg_duration_ms
             },
             "requests": items,
