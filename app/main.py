@@ -218,6 +218,28 @@ async def api_subreddit_posts(
             "data": posts
         }
         
+    except ValueError as ve:
+        duration = int((time.time() - start_time) * 1000)
+        error_msg = str(ve)
+        logger.warning(f"Client-Fehler bei Subreddit-Scraping ({target}): {error_msg}")
+        
+        if not is_playground:
+            log_entry = APIRequestLog(
+                endpoint="/v1/subreddit-posts",
+                target=target,
+                status_code=404,
+                response_time_ms=duration,
+                method_used=method_used,
+                proxy_used=proxy_used,
+                error_message=error_msg
+            )
+            db.add(log_entry)
+            db.commit()
+        
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "Client error", "message": error_msg}
+        )
     except Exception as e:
         duration = int((time.time() - start_time) * 1000)
         error_msg = str(e)
@@ -325,6 +347,28 @@ async def api_post_comments(
             "data": comments
         }
         
+    except ValueError as ve:
+        duration = int((time.time() - start_time) * 1000)
+        error_msg = str(ve)
+        logger.warning(f"Client-Fehler bei Kommentar-Scraping: {error_msg}")
+        
+        if not is_playground:
+            log_entry = APIRequestLog(
+                endpoint="/v1/post-comments",
+                target=post_url,
+                status_code=404,
+                response_time_ms=duration,
+                method_used=method_used,
+                proxy_used=proxy_used,
+                error_message=error_msg
+            )
+            db.add(log_entry)
+            db.commit()
+        
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "Client error", "message": error_msg}
+        )
     except Exception as e:
         duration = int((time.time() - start_time) * 1000)
         error_msg = str(e)
