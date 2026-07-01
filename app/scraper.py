@@ -9,6 +9,10 @@ from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
 from app.auth import get_account_cookies, update_session_state_with_cookies
 
+class NSFWRequiredException(Exception):
+    """Exception raised when content requires a logged-in NSFW account."""
+    pass
+
 logger = logging.getLogger("rddtscpr.scraper")
 
 # HTTP Header, um wie ein echter Browser zu wirken
@@ -109,6 +113,8 @@ async def scrape_subreddit_posts_json(target: str, sort: str, timeframe: str, li
         
         if response.status_code == 404:
             raise ValueError("Subreddit oder Post existiert nicht (HTTP 404).")
+        elif response.status_code in [401, 403]:
+            raise NSFWRequiredException("Zugriff verweigert (HTTP 401/403) - Altersbeschränkung vermutet.")
         elif response.status_code != 200:
             raise Exception(f"Reddit-API lieferte Status Code {response.status_code}")
             
@@ -236,6 +242,8 @@ async def scrape_post_comments_json(post_url: str, sort: str, limit: int, includ
         
         if response.status_code == 404:
             raise ValueError("Post existiert nicht (HTTP 404).")
+        elif response.status_code in [401, 403]:
+            raise NSFWRequiredException("Zugriff verweigert (HTTP 401/403) - Altersbeschränkung vermutet.")
         elif response.status_code != 200:
             raise Exception(f"Reddit-API lieferte Status Code {response.status_code}")
             
@@ -369,6 +377,10 @@ async def get_page_json(page) -> dict:
         await page.screenshot(path="./app/data/last_error.png")
         
         content_lower = content.lower()
+        # NSFW/Altersfreigabe erkennen
+        if any(term in content_lower for term in ["nicht jugendfrei", "over 18", "altersbeschränkung", "confirm your age", "under 18"]):
+            raise NSFWRequiredException("Altersbeschränkung erkannt (NSFW-Gate).")
+            
         # Spezifische Client-Fehler erkennen, die keinen Account-Failover auslösen sollten
         if "forbidden" in content_lower or "privat" in content_lower or "gesperrt" in content_lower or "banned" in content_lower:
             raise ValueError("Subreddit ist privat, gesperrt oder nicht zugänglich.")

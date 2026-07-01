@@ -963,6 +963,8 @@ async def admin_queue(
         "request": request,
         "cooldown_seconds": scrape_queue.cooldown_seconds,
         "cooldown_mode": scrape_queue.cooldown_mode,
+        "max_accountless_sessions": scrape_queue.max_accountless_sessions,
+        "rotating_proxy_url": scrape_queue.rotating_proxy_url,
         "stats": status["stats"],
         "requests": status["requests"]
     })
@@ -977,6 +979,8 @@ async def admin_queue_api(
 async def admin_queue_settings(
     cooldown_seconds: float = Form(0),
     cooldown_mode: str = Form("fixed"),
+    max_accountless_sessions: int = Form(5),
+    rotating_proxy_url: str = Form(""),
     username: str = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
@@ -986,11 +990,16 @@ async def admin_queue_settings(
     
     if cooldown_mode == "fixed" and cooldown_seconds < 0.0:
         return RedirectResponse(url="/admin/queue?error=Ungueltiger+Wert+fuer+Pause.", status_code=303)
+        
+    if max_accountless_sessions < 1:
+        return RedirectResponse(url="/admin/queue?error=Die+Anzahl+der+Sessions+muss+mindestens+1+sein.", status_code=303)
     
     # In Memory aktualisieren
     scrape_queue.cooldown_mode = cooldown_mode
     if cooldown_mode == "fixed":
         scrape_queue.cooldown_seconds = cooldown_seconds
+    scrape_queue.max_accountless_sessions = max_accountless_sessions
+    scrape_queue.rotating_proxy_url = rotating_proxy_url.strip()
     
     # In Datenbank persistieren
     try:
@@ -1009,16 +1018,29 @@ async def admin_queue_settings(
         else:
             mode_setting = SystemSetting(key="cooldown_mode", value=cooldown_mode)
             db.add(mode_setting)
+            
+        # Max-Accountless-Sessions
+        sessions_setting = db.query(SystemSetting).filter(SystemSetting.key == "max_accountless_sessions").first()
+        if sessions_setting:
+            sessions_setting.value = str(max_accountless_sessions)
+        else:
+            sessions_setting = SystemSetting(key="max_accountless_sessions", value=str(max_accountless_sessions))
+            db.add(sessions_setting)
+            
+        # Rotating-Proxy-URL
+        proxy_setting = db.query(SystemSetting).filter(SystemSetting.key == "rotating_proxy_url").first()
+        if proxy_setting:
+            proxy_setting.value = rotating_proxy_url.strip()
+        else:
+            proxy_setting = SystemSetting(key="rotating_proxy_url", value=rotating_proxy_url.strip())
+            db.add(proxy_setting)
         
         db.commit()
-        logger.info(f"Cooldown-Einstellungen aktualisiert: Modus={cooldown_mode}, Sekunden={cooldown_seconds}s")
+        logger.info(f"Queue-Einstellungen aktualisiert: Modus={cooldown_mode}, Sekunden={cooldown_seconds}s, Sessions={max_accountless_sessions}")
     except Exception as e:
-        logger.error(f"Fehler beim Speichern von cooldown_seconds/cooldown_mode in DB: {e}")
+        logger.error(f"Fehler beim Speichern der Queue-Einstellungen in DB: {e}")
     
-    if cooldown_mode == "auto":
-        return RedirectResponse(url="/admin/queue?success=Automatik-Modus+aktiviert!", status_code=303)
-    else:
-        return RedirectResponse(url=f"/admin/queue?success=Feste+Pause+auf+{cooldown_seconds}s+gesetzt!", status_code=303)
+    return RedirectResponse(url="/admin/queue?success=Einstellungen+erfolgreich+gespeichert!", status_code=303)
 
 @app.get("/admin/settings", response_class=HTMLResponse)
 async def admin_settings_get(

@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy.orm import Session
 from app.database import SessionLocal, RedditAccount, APIRequestLog, SystemSetting
-from app.scraper import get_subreddit_posts, get_post_comments
+from app.scraper import get_subreddit_posts, get_post_comments, NSFWRequiredException
 
 logger = logging.getLogger("rddtscpr.queue")
 
@@ -39,6 +39,7 @@ class ScrapeRequest:
         self.last_tried_username = None
         self.created_at = datetime.utcnow()
         self.is_playground = is_playground
+        self.requires_nsfw_account = False
         self.task = None
 
     def __lt__(self, other):
@@ -54,6 +55,9 @@ class ScrapeQueueManager:
         self._running = False
         self.cooldown_seconds = 3.0  # Mindestabstand zwischen Zugriffen desselben Accounts (Fester Modus)
         self.cooldown_mode = "fixed"  # "fixed" oder "auto"
+        self.max_accountless_sessions = 5  # Maximale Anzahl paralleler accountloser Sessions
+        self.rotating_proxy_url = ""  # Rotierende Proxy URL (z.B. Evomi)
+        self.busy_session_ids = set()  # In-Memory Sperre für aktive Session-Nummern (z.B. {1, 2})
         self.account_request_timestamps = {}  # account_id -> list of timestamps (rolling 60s)
         self.account_last_request_time = {}  # account_id -> float (timestamp)
         self.account_adaptive_tier = {}      # account_id -> int (tier index)
@@ -90,8 +94,30 @@ class ScrapeQueueManager:
                         db.add(mode_setting)
                         db.commit()
                         logger.info(f"Standard-Cooldown-Modus in DB angelegt: {self.cooldown_mode}")
+                        
+                    # Max accountless sessions laden
+                    sessions_setting = db.query(SystemSetting).filter(SystemSetting.key == "max_accountless_sessions").first()
+                    if sessions_setting:
+                        self.max_accountless_sessions = int(sessions_setting.value)
+                        logger.info(f"Max-Accountless-Sessions aus DB geladen: {self.max_accountless_sessions}")
+                    else:
+                        sessions_setting = SystemSetting(key="max_accountless_sessions", value=str(self.max_accountless_sessions))
+                        db.add(sessions_setting)
+                        db.commit()
+                        logger.info(f"Standard-Max-Accountless-Sessions in DB angelegt: {self.max_accountless_sessions}")
+                        
+                    # Rotating proxy URL laden
+                    proxy_setting = db.query(SystemSetting).filter(SystemSetting.key == "rotating_proxy_url").first()
+                    if proxy_setting:
+                        self.rotating_proxy_url = proxy_setting.value
+                        logger.info(f"Rotating-Proxy-URL aus DB geladen: {self.rotating_proxy_url}")
+                    else:
+                        proxy_setting = SystemSetting(key="rotating_proxy_url", value=self.rotating_proxy_url)
+                        db.add(proxy_setting)
+                        db.commit()
+                        logger.info(f"Standard-Rotating-Proxy-URL in DB angelegt: {self.rotating_proxy_url}")
             except Exception as e:
-                logger.error(f"Fehler beim Laden von cooldown_seconds/cooldown_mode aus DB: {e}")
+                logger.error(f"Fehler beim Laden der Einstellungen aus DB: {e}")
 
             self.worker_task = asyncio.create_task(self._worker_loop())
             self.refresh_task = asyncio.create_task(self._session_refresh_loop())
@@ -176,43 +202,101 @@ class ScrapeQueueManager:
             
             db = SessionLocal()
             try:
-                # Einen Account suchen, der aktiv, nicht beschäftigt und nicht für diese Anfrage ausgeschlossen ist
-                account = self._select_best_account(db, request.failed_account_ids, self.busy_account_ids)
+                assigned_account_id = None
+                assigned_session_slot = None
                 
-                if not account:
-                    # Kein freier Account vorhanden. Request zurücklegen (mit gleicher Priorität).
-                    # Um eine CPU-intensive Endlosschleife zu verhindern, schlafen wir kurz verzögert.
+                # 2. Check: Erfordert der Request einen echten NSFW-Account?
+                if request.requires_nsfw_account:
+                    # Zwingend echten Reddit-Account suchen
+                    account = self._select_best_account(db, request.failed_account_ids, self.busy_account_ids)
+                    if account:
+                        assigned_account_id = account.id
+                        self.busy_account_ids.add(account.id)
+                        request.account_username = account.username
+                        request.last_tried_username = account.username
+                else:
+                    # Standard-Anfrage: Bevorzuge in-memory Session-Slots
+                    free_slot = None
+                    for slot in range(1, self.max_accountless_sessions + 1):
+                        if slot not in self.busy_session_ids:
+                            free_slot = slot
+                            break
+                    
+                    if free_slot is not None:
+                        assigned_session_slot = free_slot
+                        self.busy_session_ids.add(free_slot)
+                        request.account_username = f"Session {free_slot}"
+                        request.last_tried_username = f"Session {free_slot}"
+                    else:
+                        # Fallback: Freien echten Account suchen
+                        account = self._select_best_account(db, request.failed_account_ids, self.busy_account_ids)
+                        if account:
+                            assigned_account_id = account.id
+                            self.busy_account_ids.add(account.id)
+                            request.account_username = account.username
+                            request.last_tried_username = account.username
+                
+                if assigned_account_id is None and assigned_session_slot is None:
+                    # Keine freien Ressourcen vorhanden. Request zurücklegen (mit gleicher Priorität).
                     db.close()
                     async def put_back():
                         await asyncio.sleep(0.5)
                         if self._running:
-                            # 2. Check: Bevor wir es wieder einreihen, prüfen wir, ob es mittlerweile abgebrochen wurde
                             if not request.future.done():
                                 await self.queue.put((priority, timestamp, request))
                             else:
-                                logger.info(f"Request {request.id} wurde während des Wartens auf einen freien Account abgebrochen.")
+                                logger.info(f"Request {request.id} wurde während des Wartens auf freie Ressourcen abgebrochen.")
                     asyncio.create_task(put_back())
                     self.queue.task_done()
                     continue
                 
-                # Account sperren
-                self.busy_account_ids.add(account.id)
-                request.account_username = account.username
-                request.last_tried_username = account.username
-                
-                # Request asynchron in Hintergrund-Task ausführen, damit der Worker blockierungsfrei bleibt
-                task = asyncio.create_task(self._process_request_concurrent(request, account.id, priority))
+                # Request asynchron in Hintergrund-Task ausführen
+                task = asyncio.create_task(self._process_request_concurrent(
+                    request, 
+                    account_id=assigned_account_id, 
+                    session_slot=assigned_session_slot, 
+                    current_priority=priority
+                ))
                 request.task = task
                 
             except Exception as e:
-                logger.error(f"Fehler bei der Account-Auswahl im Worker-Loop: {e}")
+                logger.error(f"Fehler bei der Ressourcen-Zuweisung im Worker-Loop: {e}")
             finally:
                 db.close()
 
-    async def _process_request_concurrent(self, request: ScrapeRequest, account_id: int, current_priority: int):
+    def _prepare_rotating_proxy(self) -> str:
+        """Generiert eine frische IP für einen Job durch Anfügen einer zufälligen Session-ID an die Proxy-URL."""
+        if not self.rotating_proxy_url:
+            return None
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(self.rotating_proxy_url)
+            if not parsed.username:
+                return self.rotating_proxy_url
+            
+            # Zufälligen Session-Suffix generieren
+            session_suffix = f"_session-{uuid.uuid4().hex[:8]}"
+            new_username = f"{parsed.username}{session_suffix}"
+            
+            netloc = parsed.netloc
+            if '@' in netloc:
+                parts = netloc.split('@', 1)
+                credentials = parts[0]
+                host_port = parts[1]
+                if ':' in credentials:
+                    user, pw = credentials.split(':', 1)
+                    netloc = f"{new_username}:{pw}@{host_port}"
+                else:
+                    netloc = f"{new_username}@{host_port}"
+            
+            return f"{parsed.scheme}://{netloc}{parsed.path}"
+        except Exception as e:
+            logger.error(f"Fehler beim Erstellen des rotierenden Proxys: {e}")
+            return self.rotating_proxy_url
+
+    async def _process_request_concurrent(self, request: ScrapeRequest, account_id: int = None, session_slot: int = None, current_priority: int = 10):
         db = None
         try:
-            db = SessionLocal()
             # Warteschlangen-Wartezeit erfassen
             wait_time = (datetime.utcnow() - request.created_at).total_seconds()
             self.wait_times.append(wait_time)
@@ -224,164 +308,200 @@ class ScrapeQueueManager:
                 logger.info(f"Request {request.id} ist vor Verarbeitungsbeginn abgebrochen worden. Stoppe Worker.")
                 return
 
-            account = db.query(RedditAccount).filter(RedditAccount.id == account_id).first()
-            if not account or not account.is_active:
-                logger.warning(f"Gewählter Account ID {account_id} ist nicht mehr aktiv oder vorhanden.")
-                # Nur wieder einreihen, wenn das Future noch aktiv ist
-                if not request.future.done():
-                    await self.queue.put((current_priority, time.time(), request))
-                return
-
-            request.attempts += 1
-            request.status = "Cooldown"
-            
-            # Cooldown für diesen Account einhalten (schläft nur in diesem Task!)
-            await self._enforce_cooldown(account)
-
-            # 4. Check: Nach dem Cooldown-Schlaf prüfen, ob das Future noch aktiv ist
-            if request.future.done():
-                logger.info(f"Request {request.id} wurde während des Account-Cooldowns abgebrochen. Stoppe Scraping.")
-                return
-
-            # Cooldown-Schlaf abgeschlossen, fahren wir mit dem Scraping fort
-
-            session_state = account.session_state
-            proxy_url = account.proxy_url
-
-            logger.info(f"Verarbeite Request '{request.action}' (Versuch {request.attempts}) mit Account '{account.username}'")
-
-            try:
-                request.status = "Scraping"
-                data, method_used, new_session = await self._execute_scrape(request.action, request.params, session_state, proxy_url)
+            if session_slot is not None:
+                # ==========================================
+                # VIRTUELLE SESSION ABARBEITUNG (Accountless)
+                # ==========================================
+                username = f"Session {session_slot}"
+                proxy_url = self._prepare_rotating_proxy()
+                session_state = None
                 
-                # 5. Check: Nach dem Scraping prüfen, ob der Client noch da ist
-                if request.future.done():
-                    logger.info(f"Request {request.id} wurde während des Scrapings abgebrochen. Verwerfe Ergebnis.")
-                    return
-
-                # Erfolg: Zähler zurücksetzen
-                account.failure_count = 0
-                if new_session:
-                    account.session_state = new_session
-                if not request.is_playground:
-                    account.request_count = (account.request_count or 0) + 1
-                # Adaptive Cooldown: Request-Zeitstempel für diesen Account erfassen
-                self._record_request(account.id)
-                db.commit()
+                request.attempts += 1
+                logger.info(f"Verarbeite Request '{request.action}' (Versuch {request.attempts}) mit virtueller Session '{username}'")
                 
-                if not request.future.done():
-                    request.future.set_result((data, method_used, account.username))
-                
-            except ValueError as val_error:
-                # Client-Fehler (z.B. Subreddit existiert nicht). Kein Failover/Sperren!
-                logger.warning(f"Client-Fehler beim Scraping: {val_error}")
-                if not request.future.done():
-                    request.future.set_exception(val_error)
-                
-            except Exception as scrape_error:
-                logger.warning(f"Fehler beim Scraping mit Haupt-Proxy für Account '{account.username}': {scrape_error}")
-                
-                is_temp = is_temporary_network_issue(scrape_error)
-                fallback_success = False
-                
-                # Fallback-Proxy verwenden, falls definiert
-                if account.fallback_proxy_url:
-                    # 6. Check: Vor dem Fallback-Proxy-Versuch prüfen
-                    if request.future.done():
-                        logger.info(f"Request {request.id} wurde vor Fallback-Versuch abgebrochen. Stoppe.")
-                        return
-
-                    logger.info(f"Probiere Fallback-Proxy für Account '{account.username}'...")
-                    try:
-                        request.status = "Scraping"
-                        data, method_used, new_session = await self._execute_scrape(request.action, request.params, session_state, account.fallback_proxy_url)
-                        
-                        # 7. Check: Nach dem Fallback-Scraping prüfen
-                        if request.future.done():
-                            logger.info(f"Request {request.id} wurde während des Fallback-Scrapings abgebrochen. Verwerfe Ergebnis.")
-                            return
-
-                        account.failure_count = 0
-                        if new_session:
-                            account.session_state = new_session
-                        if not request.is_playground:
-                            account.request_count = (account.request_count or 0) + 1
-                        # Adaptive Cooldown: Request-Zeitstempel für diesen Account erfassen
-                        self._record_request(account.id)
-                        db.commit()
-                        
-                        if not request.future.done():
-                            request.future.set_result((data, method_used, account.username))
-                        fallback_success = True
-                    except ValueError as val_error:
-                        logger.warning(f"Client-Fehler beim Scraping über Fallback-Proxy: {val_error}")
-                        if not request.future.done():
-                            request.future.set_exception(val_error)
-                        return
-                    except Exception as fallback_error:
-                        logger.error(f"Fallback-Proxy für Account '{account.username}' ebenfalls fehlgeschlagen: {fallback_error}")
-                        # Der letzte Fehler gilt
-                        scrape_error = fallback_error
-                        is_temp = is_temporary_network_issue(fallback_error)
-                
-                if not fallback_success:
-                    if is_temp:
-                        # Temporärer Fehler: Account nicht bestrafen, nur verwarnen
-                        logger.warning(f"Temporäres Problem bei '{account.username}'. Keine Deaktivierung. Temporärer Cooldown...")
-                    else:
-                        # Kritischer Fehler: Fehlerpunkte erhöhen
-                        account.failure_count = (account.failure_count or 0) + 1
-                        if account.failure_count >= 3:
-                            account.is_active = False
-                            logger.error(f"Account '{account.username}' wurde nach {account.failure_count} kritischen Fehlern DEAKTIVIERT.")
-                        db.commit()
+                try:
+                    request.status = "Scraping"
+                    data, method_used, new_session = await self._execute_scrape(request.action, request.params, session_state, proxy_url)
                     
-                    # 8. Check: Vor dem Re-enqueuing prüfen
                     if request.future.done():
-                        logger.info(f"Request {request.id} wurde vor Re-enqueuing abgebrochen. Keine Wiederholung.")
+                        logger.info(f"Request {request.id} wurde während des Scrapings abgebrochen. Verwerfe Ergebnis.")
                         return
-
-                    # Request mit anderem Account wiederholen
-                    request.failed_account_ids.add(account.id)
+                        
+                    if not request.future.done():
+                        request.future.set_result((data, method_used, username))
+                        
+                except NSFWRequiredException as nsfw_error:
+                    logger.warning(f"NSFW/Altersgate-Sperre erkannt für virtuelle '{username}': {nsfw_error}. Re-enqueuing mit NSFW Account-Zwang...")
+                    request.requires_nsfw_account = True
+                    request.status = "Wartend"
+                    request.account_username = None
+                    
+                    if not request.future.done():
+                        # Sofort zurück in die Queue mit Priorität 0 (höchste)
+                        await self.queue.put((0, time.time(), request))
+                    return
+                    
+                except Exception as scrape_error:
+                    logger.warning(f"Fehler beim Scraping mit virtueller '{username}': {scrape_error}")
+                    
                     if request.attempts < 4:
                         wait_time = 5 if request.attempts == 1 else (10 if request.attempts == 2 else 30)
-                        logger.info(f"Versuch {request.attempts} fehlgeschlagen. Re-enqueuing in {wait_time}s mit Priorität 0...")
+                        logger.info(f"Versuch {request.attempts} fehlgeschlagen. Re-enqueuing in {wait_time}s...")
                         request.status = "Wartend"
                         request.account_username = None
                         
-                        # Verzögertes Re-enqueuing in einem separaten async Task, um den Worker-Loop nicht zu blockieren
                         async def delayed_requeue(req, delay):
                             await asyncio.sleep(delay)
                             if self._running:
-                                # 9. Check: Unmittelbar vor dem eigentlichen Re-queueing prüfen
                                 if not req.future.done():
-                                    logger.info(f"Delayed Re-enqueuing: Lege Request {req.id} (nach {delay}s) wieder in die Queue (Priorität 0)...")
-                                    req.failed_account_ids.clear()
-                                    await self.queue.put((0, time.time(), req))
-                                else:
-                                    logger.info(f"Request {req.id} wurde während der Re-queue-Verzögerung abgebrochen.")
-                                
+                                    await self.queue.put((current_priority, time.time(), req))
                         asyncio.create_task(delayed_requeue(request, wait_time))
                     else:
-                        # Maximale Versuche erreicht
                         raise Exception(f"Fehlgeschlagen nach {request.attempts} Versuchen. Letzter Fehler: {scrape_error}")
+            
+            else:
+                # ==========================================
+                # KLASSISCHE ABARBEITUNG MIT REDDIT-ACCOUNT
+                # ==========================================
+                db = SessionLocal()
+                account = db.query(RedditAccount).filter(RedditAccount.id == account_id).first()
+                if not account or not account.is_active:
+                    logger.warning(f"Gewählter Account ID {account_id} ist nicht mehr aktiv oder vorhanden.")
+                    if not request.future.done():
+                        await self.queue.put((current_priority, time.time(), request))
+                    return
+
+                request.attempts += 1
+                request.status = "Cooldown"
+                
+                await self._enforce_cooldown(account)
+
+                if request.future.done():
+                    logger.info(f"Request {request.id} wurde während des Account-Cooldowns abgebrochen. Stoppe Scraping.")
+                    return
+
+                session_state = account.session_state
+                proxy_url = account.proxy_url
+
+                logger.info(f"Verarbeite Request '{request.action}' (Versuch {request.attempts}) mit Account '{account.username}'")
+
+                try:
+                    request.status = "Scraping"
+                    data, method_used, new_session = await self._execute_scrape(request.action, request.params, session_state, proxy_url)
+                    
+                    if request.future.done():
+                        logger.info(f"Request {request.id} wurde während des Scrapings abgebrochen. Verwerfe Ergebnis.")
+                        return
+
+                    account.failure_count = 0
+                    if new_session:
+                        account.session_state = new_session
+                    if not request.is_playground:
+                        account.request_count = (account.request_count or 0) + 1
+                    self._record_request(account.id)
+                    db.commit()
+                    
+                    if not request.future.done():
+                        request.future.set_result((data, method_used, account.username))
+                        
+                except NSFWRequiredException as nsfw_error:
+                    logger.warning(f"NSFW/Altersgate-Sperre erkannt für Account '{account.username}': {nsfw_error}. Re-enqueuing mit NSFW Account-Zwang...")
+                    request.requires_nsfw_account = True
+                    request.status = "Wartend"
+                    request.account_username = None
+                    if not request.future.done():
+                        await self.queue.put((0, time.time(), request))
+                    return
+
+                except Exception as scrape_error:
+                    logger.warning(f"Fehler beim Scraping mit Haupt-Proxy für Account '{account.username}': {scrape_error}")
+                    is_temp = is_temporary_network_issue(scrape_error)
+                    fallback_success = False
+                    
+                    if account.fallback_proxy_url:
+                        if request.future.done():
+                            logger.info(f"Request {request.id} wurde vor Fallback-Versuch abgebrochen. Stoppe.")
+                            return
+
+                        logger.info(f"Probiere Fallback-Proxy für Account '{account.username}'...")
+                        try:
+                            request.status = "Scraping"
+                            data, method_used, new_session = await self._execute_scrape(request.action, request.params, session_state, account.fallback_proxy_url)
+                            
+                            if request.future.done():
+                                logger.info(f"Request {request.id} wurde während des Fallback-Scrapings abgebrochen. Verwerfe Ergebnis.")
+                                return
+
+                            account.failure_count = 0
+                            if new_session:
+                                account.session_state = new_session
+                            if not request.is_playground:
+                                account.request_count = (account.request_count or 0) + 1
+                            self._record_request(account.id)
+                            db.commit()
+                            
+                            if not request.future.done():
+                                request.future.set_result((data, method_used, account.username))
+                            fallback_success = True
+                        except ValueError as val_error:
+                            logger.warning(f"Client-Fehler beim Scraping über Fallback-Proxy: {val_error}")
+                            if not request.future.done():
+                                request.future.set_exception(val_error)
+                            return
+                        except Exception as fallback_error:
+                            logger.error(f"Fallback-Proxy für Account '{account.username}' ebenfalls fehlgeschlagen: {fallback_error}")
+                            scrape_error = fallback_error
+                            is_temp = is_temporary_network_issue(fallback_error)
+                    
+                    if not fallback_success:
+                        if is_temp:
+                            logger.warning(f"Temporäres Problem bei '{account.username}'. Keine Deaktivierung.")
+                        else:
+                            account.failure_count = (account.failure_count or 0) + 1
+                            if account.failure_count >= 3:
+                                account.is_active = False
+                                logger.error(f"Account '{account.username}' wurde nach {account.failure_count} kritischen Fehlern DEAKTIVIERT.")
+                            db.commit()
+                        
+                        if request.future.done():
+                            logger.info(f"Request {request.id} wurde vor Re-enqueuing abgebrochen. Keine Wiederholung.")
+                            return
+
+                        request.failed_account_ids.add(account.id)
+                        if request.attempts < 4:
+                            wait_time = 5 if request.attempts == 1 else (10 if request.attempts == 2 else 30)
+                            logger.info(f"Versuch {request.attempts} fehlgeschlagen. Re-enqueuing in {wait_time}s mit Priorität 0...")
+                            request.status = "Wartend"
+                            request.account_username = None
+                            
+                            async def delayed_requeue(req, delay):
+                                await asyncio.sleep(delay)
+                                if self._running:
+                                    if not req.future.done():
+                                        await self.queue.put((0, time.time(), req))
+                            asyncio.create_task(delayed_requeue(request, wait_time))
+                        else:
+                            raise Exception(f"Fehlgeschlagen nach {request.attempts} Versuchen. Letzter Fehler: {scrape_error}")
+
         except Exception as final_exception:
             logger.error(f"Request endgültig fehlgeschlagen: {final_exception}")
             final_exception.reddit_username = request.last_tried_username
             if not request.future.done():
                 request.future.set_exception(final_exception)
         finally:
-            # Cooldown erst nach Abarbeitung der Anfrage starten!
-            if db:
-                try:
-                    account = db.query(RedditAccount).filter(RedditAccount.id == account_id).first()
-                    if account:
-                        account.last_used_at = datetime.utcnow()
-                        db.commit()
-                except Exception as e:
-                    logger.error(f"Fehler beim Aktualisieren von last_used_at im finally-Block: {e}")
-            # Account entsperren und Task abschließen
-            self.busy_account_ids.discard(account_id)
+            if session_slot is not None:
+                self.busy_session_ids.discard(session_slot)
+            elif account_id is not None:
+                # Cooldown erst nach Abarbeitung der Anfrage starten!
+                if db:
+                    try:
+                        account = db.query(RedditAccount).filter(RedditAccount.id == account_id).first()
+                        if account:
+                            account.last_used_at = datetime.utcnow()
+                            db.commit()
+                    except Exception as e:
+                        logger.error(f"Fehler beim Aktualisieren von last_used_at im finally-Block: {e}")
+                self.busy_account_ids.discard(account_id)
             self.queue.task_done()
             if db:
                 db.close()
