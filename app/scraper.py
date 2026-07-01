@@ -104,7 +104,10 @@ async def scrape_subreddit_posts_json(target: str, sort: str, timeframe: str, li
     cookies = get_account_cookies(session_state)
     
     # Proxy-Konfiguration
-    proxies = {"all://": proxy_url} if proxy_url else None
+    proxies = {
+        "http://": proxy_url,
+        "https://": proxy_url
+    } if proxy_url else None
     
     logger.info(f"JSON-Trick: Rufe URL auf: {json_url} mit Params {params}")
     
@@ -161,7 +164,10 @@ async def fetch_more_children(link_id: str, children_ids: list[str], sort: str, 
         "sort": sort
     }
     cookies = get_account_cookies(session_state)
-    proxies = {"all://": proxy_url} if proxy_url else None
+    proxies = {
+        "http://": proxy_url,
+        "https://": proxy_url
+    } if proxy_url else None
     
     logger.info(f"MoreChildren: Rufe {len(children_ids)} IDs ab...")
     try:
@@ -233,7 +239,10 @@ async def scrape_post_comments_json(post_url: str, sort: str, limit: int, includ
     
     params = {"sort": sort}
     cookies = get_account_cookies(session_state)
-    proxies = {"all://": proxy_url} if proxy_url else None
+    proxies = {
+        "http://": proxy_url,
+        "https://": proxy_url
+    } if proxy_url else None
     
     logger.info(f"JSON-Trick: Rufe URL auf: {json_url} mit Params {params}")
     
