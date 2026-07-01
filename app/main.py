@@ -1175,7 +1175,7 @@ async def test_rotating_proxy(
         test_proxy_url = proxy_url
         parsed = urlparse(proxy_url)
         if parsed.username:
-            session_suffix = f"_session-test-{uuid.uuid4().hex[:4]}"
+            session_suffix = f"_hardsession-test-{uuid.uuid4().hex[:4].upper()}"
             netloc = parsed.netloc
             if '@' in netloc:
                 parts = netloc.split('@', 1)

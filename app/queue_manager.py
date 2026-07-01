@@ -275,7 +275,7 @@ class ScrapeQueueManager:
                 return self.rotating_proxy_url
             
             # Zufälligen Session-Suffix generieren
-            session_suffix = f"_session-{uuid.uuid4().hex[:8]}"
+            session_suffix = f"_hardsession-{uuid.uuid4().hex[:8].upper()}"
             
             netloc = parsed.netloc
             if '@' in netloc:
