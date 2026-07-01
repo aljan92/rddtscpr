@@ -1080,6 +1080,7 @@ async def diagnose_queue(
                 "status_code": l.status_code,
                 "error_message": l.error_message
             })
+        from app.auth import get_session_info_from_state
         accounts = db.query(RedditAccount).filter(RedditAccount.is_active == True).all()
         acc_list = []
         for a in accounts:
@@ -1088,7 +1089,8 @@ async def diagnose_queue(
                 "username": a.username,
                 "proxy_url": a.proxy_url,
                 "fallback_proxy_url": a.fallback_proxy_url,
-                "failure_count": a.failure_count
+                "failure_count": a.failure_count,
+                "session_info": get_session_info_from_state(a.session_state)
             })
         return {
             "max_accountless_sessions": scrape_queue.max_accountless_sessions,
