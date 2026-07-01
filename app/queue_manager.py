@@ -347,6 +347,11 @@ class ScrapeQueueManager:
                     logger.warning(f"Fehler beim Scraping mit virtueller '{username}': {scrape_error}")
                     
                     if request.attempts < 4:
+                        # Nach 3 Fehlversuchen auf echten Reddit-Account eskalieren
+                        if request.attempts >= 3:
+                            logger.info(f"Request {request.id} ist bereits {request.attempts} mal anonym fehlgeschlagen. Eskaliere auf echten Reddit-Account als finalen Fallback...")
+                            request.requires_nsfw_account = True
+                            
                         wait_time = 5 if request.attempts == 1 else (10 if request.attempts == 2 else 30)
                         logger.info(f"Versuch {request.attempts} fehlgeschlagen. Re-enqueuing in {wait_time}s...")
                         request.status = "Wartend"
