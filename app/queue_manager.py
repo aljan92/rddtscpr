@@ -515,8 +515,9 @@ class ScrapeQueueManager:
         current_load, max_24h_load = self.calculate_system_load()
         avg_wait = sum(self.wait_times) / len(self.wait_times) if self.wait_times else 0.0
         
-        # Latest 50 logs laden
+        # Latest 50 logs und Accounts laden
         logs_json = []
+        accounts_list = []
         total_requests = 0
         success_requests = 0
         client_error_requests = 0
@@ -539,6 +540,49 @@ class ScrapeQueueManager:
                         "error_message": log.error_message or ""
                     })
                     
+                # Accounts laden
+                db_accounts = db.query(RedditAccount).all()
+                now_dt = datetime.utcnow()
+                for acc in db_accounts:
+                    if self.cooldown_mode == "auto":
+                        cooldown = self._get_adaptive_cooldown(acc.id)
+                        tier_index = self.account_adaptive_tier.get(acc.id, 0)
+                        tier_name = ADAPTIVE_TIERS[tier_index]["name"]
+                        cooldown_display = f"{tier_name} ({cooldown:.1f}s)"
+                    else:
+                        cooldown = self.cooldown_seconds
+                        tier_index = 0
+                        cooldown_display = f"Manuell ({cooldown:.1f}s)"
+                    
+                    status = "IDLE"
+                    remaining_seconds = 0
+                    
+                    if not acc.is_active:
+                        status = "DEAKTIVIERT"
+                    elif acc.id in self.busy_account_ids:
+                        status = "WORKING"
+                    elif acc.last_used_at:
+                        elapsed = (now_dt - acc.last_used_at).total_seconds()
+                        if elapsed < cooldown:
+                            status = "COOLDOWN"
+                            remaining_seconds = int(cooldown - elapsed)
+                    
+                    last_used_seconds_ago = None
+                    if acc.last_used_at:
+                        last_used_seconds_ago = int((now_dt - acc.last_used_at).total_seconds())
+                    
+                    accounts_list.append({
+                        "id": acc.id,
+                        "username": acc.username,
+                        "cooldown": cooldown,
+                        "cooldown_display": cooldown_display,
+                        "status": status,
+                        "remaining_seconds": remaining_seconds,
+                        "last_used_seconds_ago": last_used_seconds_ago,
+                        "is_active": acc.is_active,
+                        "tier_index": tier_index
+                    })
+                    
                 total_requests = db.query(APIRequestLog).count()
                 success_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code == 200).count()
                 client_error_requests = db.query(APIRequestLog).filter(APIRequestLog.status_code.between(400, 498)).count()
@@ -559,27 +603,22 @@ class ScrapeQueueManager:
         max_tier_index = 0
         max_requests_in_window = 0
         
-        try:
-            with SessionLocal() as db:
-                active_accounts = db.query(RedditAccount).filter(RedditAccount.is_active == True).all()
-                now_ts = time.time()
-                for acc in active_accounts:
-                    # Clean rolling window für diesen Account
-                    if acc.id in self.account_request_timestamps:
-                        self.account_request_timestamps[acc.id] = [ts for ts in self.account_request_timestamps[acc.id] if now_ts - ts < 60]
-                    
-                    cooldown = self._get_adaptive_cooldown(acc.id) if self.cooldown_mode == "auto" else self.cooldown_seconds
-                    tier_idx = self.account_adaptive_tier.get(acc.id, 0) if self.cooldown_mode == "auto" else 0
-                    req_count = len(self.account_request_timestamps.get(acc.id, []))
-                    
-                    if cooldown > max_cooldown:
-                        max_cooldown = cooldown
-                        max_tier_index = tier_idx
-                    if req_count > max_requests_in_window:
-                        max_requests_in_window = req_count
-        except Exception as e:
-            logger.error(f"Fehler beim Berechnen des max adaptiven Cooldowns: {e}")
-            max_cooldown = self.cooldown_seconds
+        now_ts = time.time()
+        for acc in accounts_list:
+            if not acc["is_active"]:
+                continue
+            
+            # Clean rolling window für diesen Account
+            if acc["id"] in self.account_request_timestamps:
+                self.account_request_timestamps[acc["id"]] = [ts for ts in self.account_request_timestamps[acc["id"]] if now_ts - ts < 60]
+            
+            req_count = len(self.account_request_timestamps.get(acc["id"], []))
+            
+            if acc["cooldown"] > max_cooldown:
+                max_cooldown = acc["cooldown"]
+                max_tier_index = acc["tier_index"]
+            if req_count > max_requests_in_window:
+                max_requests_in_window = req_count
             
         tier_info = ADAPTIVE_TIERS[max_tier_index] if self.cooldown_mode == "auto" else None
         
@@ -607,6 +646,7 @@ class ScrapeQueueManager:
             },
             "requests": items,
             "logs": logs_json,
+            "accounts": accounts_list,
             "sparkline": list(self.sparkline_history)
         }
 

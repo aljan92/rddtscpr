@@ -143,56 +143,13 @@
                             </div>
                         </div>
 
-                        <!-- Auto Mode: Tier Display -->
-                        <div id="auto-mode-display" style="display: none;">
-                            <div class="space-y-3">
-                                <div class="flex items-center justify-between">
-                                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Aktive Stufe</span>
-                                    <span id="adaptive-tier-badge" class="inline-flex items-center text-xs px-2.5 py-1 rounded-full font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                        Sprint — 2s
-                                    </span>
-                                </div>
-                                <div class="flex items-center justify-between">
-                                    <span class="text-xs text-slate-400">Effektiver Cooldown</span>
-                                    <span class="text-sm font-bold text-white" id="effective-cooldown-display">2.0s</span>
-                                </div>
-                                <div class="flex items-center justify-between">
-                                    <span class="text-xs text-slate-400">Anfragen (60s-Fenster)</span>
-                                    <span class="text-sm font-bold text-white" id="requests-in-window-display">0</span>
-                                </div>
-                                <!-- Tier Scale Visualization -->
-                                <div class="space-y-1.5 pt-1">
-                                    <div class="flex items-center space-x-2 text-xs" id="tier-row-0">
-                                        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                                        <span class="text-slate-400 flex-1">Sprint</span>
-                                        <span class="text-slate-500 font-mono">2s</span>
-                                        <span class="text-slate-600 font-mono text-[10px]">&lt;5 req</span>
-                                    </div>
-                                    <div class="flex items-center space-x-2 text-xs" id="tier-row-1">
-                                        <span class="w-2 h-2 rounded-full bg-blue-400"></span>
-                                        <span class="text-slate-400 flex-1">Normal</span>
-                                        <span class="text-slate-500 font-mono">5s</span>
-                                        <span class="text-slate-600 font-mono text-[10px]">5-9 req</span>
-                                    </div>
-                                    <div class="flex items-center space-x-2 text-xs" id="tier-row-2">
-                                        <span class="w-2 h-2 rounded-full bg-amber-400"></span>
-                                        <span class="text-slate-400 flex-1">Vorsicht</span>
-                                        <span class="text-slate-500 font-mono">10s</span>
-                                        <span class="text-slate-600 font-mono text-[10px]">10-14 req</span>
-                                    </div>
-                                    <div class="flex items-center space-x-2 text-xs" id="tier-row-3">
-                                        <span class="w-2 h-2 rounded-full bg-orange-400"></span>
-                                        <span class="text-slate-400 flex-1">Defensiv</span>
-                                        <span class="text-slate-500 font-mono">15s</span>
-                                        <span class="text-slate-600 font-mono text-[10px]">15-19 req</span>
-                                    </div>
-                                    <div class="flex items-center space-x-2 text-xs" id="tier-row-4">
-                                        <span class="w-2 h-2 rounded-full bg-rose-400"></span>
-                                        <span class="text-slate-400 flex-1">Maximum</span>
-                                        <span class="text-slate-500 font-mono">20s</span>
-                                        <span class="text-slate-600 font-mono text-[10px]">20+ req</span>
-                                    </div>
-                                </div>
+                        <!-- Auto Mode Explanation -->
+                        <div id="auto-mode-display" style="display: none;" class="bg-reddit-orange/5 border border-reddit-orange/15 rounded-xl p-3.5 text-xs text-slate-300">
+                            <div class="flex items-start space-x-2">
+                                <i data-lucide="info" class="w-4 h-4 text-reddit-orange flex-shrink-0 mt-0.5"></i>
+                                <p>
+                                    Im <strong>Automatik-Modus</strong> wird die Pause für jeden Account dynamisch und individuell berechnet, basierend auf der Last des jeweiligen Kontos. Der aktuelle Live-Status jedes Kontos wird in der Tabelle unten aufgeführt.
+                                </p>
                             </div>
                         </div>
 
@@ -271,6 +228,41 @@
                         <span>Jetzt</span>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Account Status List -->
+        <div class="glass-card rounded-2xl overflow-hidden mt-6">
+            <div class="px-6 py-5 border-b border-reddit-border flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="bg-reddit-orange/10 p-2 rounded-lg text-reddit-orange">
+                        <i data-lucide="users" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-white">Reddit-Accounts & Cooldown-Status</h3>
+                        <p class="text-xs text-slate-400">Aktueller Status und berechnete Pausenzeit pro Account</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto w-full">
+                <table class="w-full text-left border-collapse" id="accounts-table">
+                    <thead>
+                        <tr class="border-b border-reddit-border text-slate-400 text-xs font-semibold uppercase tracking-wider bg-reddit-dark/20">
+                            <th class="px-6 py-4">Account</th>
+                            <th class="px-6 py-4">Pause-Einstellung / Stufe</th>
+                            <th class="px-6 py-4">Letzte Aktivität</th>
+                            <th class="px-6 py-4 text-right">Status / Aufgabe</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-reddit-border/30 text-sm" id="accounts-tbody">
+                        <tr id="accounts-empty-row">
+                            <td colspan="4" class="px-6 py-8 text-center text-slate-500">
+                                Lade Account-Status...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 
@@ -438,47 +430,67 @@
             lucide.createIcons();
         }
 
-        function updateAdaptiveDisplay(stats) {
-            if (stats.cooldown_mode !== 'auto') return;
-            
-            const tierIndex = stats.adaptive_tier_index || 0;
-            const tierName = stats.adaptive_tier_name || 'Sprint';
-            const effectiveCooldown = stats.effective_cooldown || 2;
-            const requestsInWindow = stats.requests_in_window || 0;
-
-            // Badge aktualisieren
-            const badge = document.getElementById('adaptive-tier-badge');
-            if (badge) {
-                const colors = TIER_COLORS[tierIndex] || TIER_COLORS[0];
-                badge.className = `inline-flex items-center text-xs px-2.5 py-1 rounded-full font-bold ${colors.bg} ${colors.text} border ${colors.border}`;
-                badge.innerText = `${tierName} — ${effectiveCooldown}s`;
+        function updateAccountsTable(accounts) {
+            const tbody = document.getElementById('accounts-tbody');
+            if (!accounts || accounts.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="px-6 py-8 text-center text-slate-500">
+                            Keine Accounts konfiguriert.
+                        </td>
+                    </tr>
+                `;
+                return;
             }
-
-            // Cooldown + Window anzeigen
-            const cooldownEl = document.getElementById('effective-cooldown-display');
-            if (cooldownEl) cooldownEl.innerText = effectiveCooldown + 's';
             
-            const windowEl = document.getElementById('requests-in-window-display');
-            if (windowEl) windowEl.innerText = requestsInWindow;
-
-            // Tier-Zeilen hervorheben
-            for (let i = 0; i < 5; i++) {
-                const row = document.getElementById('tier-row-' + i);
-                if (row) {
-                    if (i === tierIndex) {
-                        row.style.opacity = '1';
-                        row.style.fontWeight = 'bold';
-                        row.style.background = 'rgba(255,255,255,0.03)';
-                        row.style.borderRadius = '6px';
-                        row.style.padding = '2px 4px';
-                    } else {
-                        row.style.opacity = '0.5';
-                        row.style.fontWeight = 'normal';
-                        row.style.background = 'none';
-                        row.style.padding = '0';
-                    }
+            let html = '';
+            accounts.forEach(acc => {
+                let statusBadge = '';
+                if (acc.status === 'DEAKTIVIERT') {
+                    statusBadge = '<span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 border border-rose-500/20 text-rose-400"><span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span><span>Inaktiv</span></span>';
+                } else if (acc.status === 'WORKING') {
+                    statusBadge = '<span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span><span>Scraping</span></span>';
+                } else if (acc.status === 'COOLDOWN') {
+                    statusBadge = `<span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 border border-blue-500/20 text-blue-400"><span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span><span>Cooldown (${acc.remaining_seconds}s)</span></span>`;
+                } else {
+                    statusBadge = '<span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/10 border border-slate-700 text-slate-300"><span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span><span>Bereit (Idle)</span></span>';
                 }
-            }
+                
+                let lastUsedDisplay = '-';
+                if (acc.last_used_seconds_ago !== null) {
+                    lastUsedDisplay = acc.last_used_seconds_ago + 's her';
+                }
+                
+                // Farbigen Punkt für Stufe ermitteln (nur im auto modus)
+                let dotColor = 'bg-slate-500';
+                if (acc.is_active && document.getElementById('cooldown_mode').value === 'auto') {
+                    const colors = ['bg-emerald-400', 'bg-blue-400', 'bg-amber-400', 'bg-orange-400', 'bg-rose-400'];
+                    dotColor = colors[acc.tier_index] || 'bg-slate-500';
+                } else if (acc.is_active) {
+                    dotColor = 'bg-emerald-400';
+                }
+                
+                html += `
+                    <tr class="hover:bg-slate-800/10 transition-colors">
+                        <td class="px-6 py-4 font-semibold text-white">
+                            <span class="flex items-center space-x-2">
+                                <i data-lucide="user" class="w-4 h-4 text-slate-500"></i>
+                                <span>${acc.username}</span>
+                            </span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="inline-flex items-center space-x-2">
+                                <span class="w-2.5 h-2.5 rounded-full ${dotColor}"></span>
+                                <span class="text-slate-300 font-medium">${acc.cooldown_display}</span>
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 font-mono text-xs text-slate-400">${lastUsedDisplay}</td>
+                        <td class="px-6 py-4 text-right">${statusBadge}</td>
+                    </tr>
+                `;
+            });
+            
+            tbody.innerHTML = html;
         }
 
         // Initial mode setzen basierend auf Server-Wert
@@ -500,8 +512,8 @@
                 document.getElementById('stat-load-peak').innerText = data.stats.max_24h_load + '%';
                 document.getElementById('stat-timeouts').innerText = data.stats.global_timeouts;
 
-                // Adaptive Cooldown live aktualisieren
-                updateAdaptiveDisplay(data.stats);
+                // Account Status live aktualisieren
+                updateAccountsTable(data.accounts);
                 
                 // Sparkline aktualisieren
                 const sparkline = data.sparkline || [];
