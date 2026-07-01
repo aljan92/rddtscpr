@@ -265,7 +265,7 @@ class ScrapeQueueManager:
                 db.close()
 
     def _prepare_rotating_proxy(self) -> str:
-        """Generiert eine frische IP für einen Job durch Anfügen einer zufälligen Session-ID an die Proxy-URL."""
+        """Generiert eine frische IP für einen Job durch Anfügen einer zufälligen Session-ID an die Proxy-URL (Passwort-Suffix)."""
         if not self.rotating_proxy_url:
             return None
         from urllib.parse import urlparse
@@ -276,7 +276,6 @@ class ScrapeQueueManager:
             
             # Zufälligen Session-Suffix generieren
             session_suffix = f"_session-{uuid.uuid4().hex[:8]}"
-            new_username = f"{parsed.username}{session_suffix}"
             
             netloc = parsed.netloc
             if '@' in netloc:
@@ -285,9 +284,12 @@ class ScrapeQueueManager:
                 host_port = parts[1]
                 if ':' in credentials:
                     user, pw = credentials.split(':', 1)
-                    netloc = f"{new_username}:{pw}@{host_port}"
+                    # Evomi verlangt den Session-Suffix am Passwort, nicht am Benutzernamen
+                    new_pw = f"{pw}{session_suffix}"
+                    netloc = f"{user}:{new_pw}@{host_port}"
                 else:
-                    netloc = f"{new_username}@{host_port}"
+                    new_user = f"{credentials}{session_suffix}"
+                    netloc = f"{new_user}@{host_port}"
             
             return f"{parsed.scheme}://{netloc}{parsed.path}"
         except Exception as e:

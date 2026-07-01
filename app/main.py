@@ -1120,7 +1120,6 @@ async def test_rotating_proxy(
         parsed = urlparse(proxy_url)
         if parsed.username:
             session_suffix = f"_session-test-{uuid.uuid4().hex[:4]}"
-            new_username = f"{parsed.username}{session_suffix}"
             netloc = parsed.netloc
             if '@' in netloc:
                 parts = netloc.split('@', 1)
@@ -1128,9 +1127,12 @@ async def test_rotating_proxy(
                 host_port = parts[1]
                 if ':' in credentials:
                     user, pw = credentials.split(':', 1)
-                    netloc = f"{new_username}:{pw}@{host_port}"
+                    # Evomi verlangt den Session-Suffix am Passwort, nicht am Benutzernamen
+                    new_pw = f"{pw}{session_suffix}"
+                    netloc = f"{user}:{new_pw}@{host_port}"
                 else:
-                    netloc = f"{new_username}@{host_port}"
+                    new_user = f"{credentials}{session_suffix}"
+                    netloc = f"{new_user}@{host_port}"
             test_proxy_url = f"{parsed.scheme}://{netloc}{parsed.path}"
             
         proxies = {
