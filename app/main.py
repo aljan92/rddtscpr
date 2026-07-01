@@ -1080,6 +1080,16 @@ async def diagnose_queue(
                 "status_code": l.status_code,
                 "error_message": l.error_message
             })
+        accounts = db.query(RedditAccount).filter(RedditAccount.is_active == True).all()
+        acc_list = []
+        for a in accounts:
+            acc_list.append({
+                "id": a.id,
+                "username": a.username,
+                "proxy_url": a.proxy_url,
+                "fallback_proxy_url": a.fallback_proxy_url,
+                "failure_count": a.failure_count
+            })
         return {
             "max_accountless_sessions": scrape_queue.max_accountless_sessions,
             "rotating_proxy_url_configured": bool(scrape_queue.rotating_proxy_url),
@@ -1090,7 +1100,8 @@ async def diagnose_queue(
             "active_requests": reqs,
             "queue_empty": scrape_queue.queue.empty(),
             "running": scrape_queue._running,
-            "recent_logs": log_list
+            "recent_logs": log_list,
+            "active_accounts": acc_list
         }
     except Exception as e:
         return {"error": str(e)}
