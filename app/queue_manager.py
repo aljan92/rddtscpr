@@ -54,9 +54,9 @@ class ScrapeQueueManager:
         self._running = False
         self.cooldown_seconds = 3.0  # Mindestabstand zwischen Zugriffen desselben Accounts (Fester Modus)
         self.cooldown_mode = "fixed"  # "fixed" oder "auto"
-        self.adaptive_tier = 0  # Aktuelle Stufe (0-4, Index in ADAPTIVE_TIERS)
-        self.request_timestamps = []  # Rolling Window: Zeitstempel der letzten 60s (global)
-        self.last_request_time = 0  # Zeitpunkt der letzten abgeschlossenen Anfrage
+        self.account_request_timestamps = {}  # account_id -> list of timestamps (rolling 60s)
+        self.account_last_request_time = {}  # account_id -> float (timestamp)
+        self.account_adaptive_tier = {}      # account_id -> int (tier index)
         self.active_requests = {}  # id -> ScrapeRequest
         self.busy_account_ids = set()  # In-Memory Sperre für Accounts, die gerade arbeiten
         self.load_history = []  # [(timestamp, load_pct)] over the last 24 hours
@@ -267,9 +267,8 @@ class ScrapeQueueManager:
                     account.session_state = new_session
                 if not request.is_playground:
                     account.request_count = (account.request_count or 0) + 1
-                # Adaptive Cooldown: Request-Zeitstempel für Rolling Window erfassen
-                self.request_timestamps.append(time.time())
-                self.last_request_time = time.time()
+                # Adaptive Cooldown: Request-Zeitstempel für diesen Account erfassen
+                self._record_request(account.id)
                 db.commit()
                 
                 if not request.future.done():
@@ -309,6 +308,8 @@ class ScrapeQueueManager:
                             account.session_state = new_session
                         if not request.is_playground:
                             account.request_count = (account.request_count or 0) + 1
+                        # Adaptive Cooldown: Request-Zeitstempel für diesen Account erfassen
+                        self._record_request(account.id)
                         db.commit()
                         
                         if not request.future.done():
@@ -396,23 +397,37 @@ class ScrapeQueueManager:
         accounts.sort(key=lambda a: a.last_used_at or datetime.min)
         return accounts[0]
 
-    def _get_adaptive_cooldown(self) -> float:
-        """Berechnet den adaptiven Cooldown basierend auf dem rollierenden 60s-Fenster."""
+    def _record_request(self, account_id: int):
+        """Erfasst den Zeitstempel einer erfolgreichen Anfrage für einen bestimmten Account."""
+        now = time.time()
+        if account_id not in self.account_request_timestamps:
+            self.account_request_timestamps[account_id] = []
+        self.account_request_timestamps[account_id].append(now)
+        self.account_last_request_time[account_id] = now
+
+    def _get_adaptive_cooldown(self, account_id: int) -> float:
+        """Berechnet den adaptiven Cooldown basierend auf dem rollierenden 60s-Fenster für einen bestimmten Account."""
         now = time.time()
         
+        if account_id not in self.account_request_timestamps:
+            self.account_request_timestamps[account_id] = []
+            
         # Rolling Window bereinigen: nur Timestamps der letzten 60s behalten
-        self.request_timestamps = [ts for ts in self.request_timestamps if now - ts < 60]
-        requests_in_window = len(self.request_timestamps)
+        self.account_request_timestamps[account_id] = [ts for ts in self.account_request_timestamps[account_id] if now - ts < 60]
+        requests_in_window = len(self.account_request_timestamps[account_id])
         
         # Herunterskalierung: Wenn lange keine Anfrage kam, Stufe senken
-        if self.last_request_time > 0:
-            idle_time = now - self.last_request_time
+        last_time = self.account_last_request_time.get(account_id, 0.0)
+        current_tier = self.account_adaptive_tier.get(account_id, 0)
+        
+        if last_time > 0:
+            idle_time = now - last_time
             if idle_time > 60:
                 # Längere Stille → direkt auf Sprint
-                self.adaptive_tier = 0
-            elif idle_time > 30 and self.adaptive_tier > 0:
+                current_tier = 0
+            elif idle_time > 30 and current_tier > 0:
                 # Moderate Stille → eine Stufe runter
-                self.adaptive_tier = max(0, self.adaptive_tier - 1)
+                current_tier = max(0, current_tier - 1)
         
         # Hochskalierung: Basierend auf Anfragenzahl im Fenster
         new_tier = 0
@@ -423,19 +438,19 @@ class ScrapeQueueManager:
         else:
             new_tier = len(ADAPTIVE_TIERS) - 1
         
-        # Stufe darf nur steigen (nicht fallen) basierend auf Anfragenzahl —
-        # das Fallen passiert nur über die Idle-Logik oben
-        if new_tier > self.adaptive_tier:
-            self.adaptive_tier = new_tier
+        # Stufe darf nur steigen (nicht fallen) basierend auf Anfragenzahl
+        if new_tier > current_tier:
+            current_tier = new_tier
         
-        tier_info = ADAPTIVE_TIERS[self.adaptive_tier]
+        self.account_adaptive_tier[account_id] = current_tier
+        tier_info = ADAPTIVE_TIERS[current_tier]
         return float(tier_info["cooldown"])
 
     async def _enforce_cooldown(self, account: RedditAccount):
         """Erzwingt das Cooldown-Limit für das gewählte Konto."""
         # Effektiven Cooldown bestimmen (je nach Modus)
         if self.cooldown_mode == "auto":
-            effective_cooldown = self._get_adaptive_cooldown()
+            effective_cooldown = self._get_adaptive_cooldown(account.id)
         else:
             effective_cooldown = self.cooldown_seconds
         
@@ -445,7 +460,8 @@ class ScrapeQueueManager:
             if wait_time > 0:
                 tier_label = ""
                 if self.cooldown_mode == "auto":
-                    tier_label = f" [Stufe: {ADAPTIVE_TIERS[self.adaptive_tier]['name']}]"
+                    tier_index = self.account_adaptive_tier.get(account.id, 0)
+                    tier_label = f" [Stufe: {ADAPTIVE_TIERS[tier_index]['name']}]"
                 logger.info(f"Cooldown für Account '{account.username}': Warte {wait_time:.2f}s{tier_label}...")
                 await asyncio.sleep(wait_time)
 
@@ -538,17 +554,34 @@ class ScrapeQueueManager:
         except Exception as e:
             logger.error(f"Fehler beim Laden der API-Statistiken für Queue-API: {e}")
             
-        # Effektiven Cooldown bestimmen
-        if self.cooldown_mode == "auto":
-            effective_cooldown = self._get_adaptive_cooldown()
-            tier_info = ADAPTIVE_TIERS[self.adaptive_tier]
-        else:
-            effective_cooldown = self.cooldown_seconds
-            tier_info = None
+        # Max-Cooldown, Max-Tier und Max-Requests über alle aktiven Accounts ermitteln
+        max_cooldown = 0.0
+        max_tier_index = 0
+        max_requests_in_window = 0
         
-        # Rolling Window bereinigen für korrekte Anzeige
-        now = time.time()
-        self.request_timestamps = [ts for ts in self.request_timestamps if now - ts < 60]
+        try:
+            with SessionLocal() as db:
+                active_accounts = db.query(RedditAccount).filter(RedditAccount.is_active == True).all()
+                now_ts = time.time()
+                for acc in active_accounts:
+                    # Clean rolling window für diesen Account
+                    if acc.id in self.account_request_timestamps:
+                        self.account_request_timestamps[acc.id] = [ts for ts in self.account_request_timestamps[acc.id] if now_ts - ts < 60]
+                    
+                    cooldown = self._get_adaptive_cooldown(acc.id) if self.cooldown_mode == "auto" else self.cooldown_seconds
+                    tier_idx = self.account_adaptive_tier.get(acc.id, 0) if self.cooldown_mode == "auto" else 0
+                    req_count = len(self.account_request_timestamps.get(acc.id, []))
+                    
+                    if cooldown > max_cooldown:
+                        max_cooldown = cooldown
+                        max_tier_index = tier_idx
+                    if req_count > max_requests_in_window:
+                        max_requests_in_window = req_count
+        except Exception as e:
+            logger.error(f"Fehler beim Berechnen des max adaptiven Cooldowns: {e}")
+            max_cooldown = self.cooldown_seconds
+            
+        tier_info = ADAPTIVE_TIERS[max_tier_index] if self.cooldown_mode == "auto" else None
         
         return {
             "stats": {
@@ -557,10 +590,10 @@ class ScrapeQueueManager:
                 "active": active_count,
                 "cooldown_seconds": self.cooldown_seconds,
                 "cooldown_mode": self.cooldown_mode,
-                "effective_cooldown": round(effective_cooldown, 1),
+                "effective_cooldown": round(max_cooldown, 1),
                 "adaptive_tier_name": tier_info["name"] if tier_info else None,
-                "adaptive_tier_index": self.adaptive_tier,
-                "requests_in_window": len(self.request_timestamps),
+                "adaptive_tier_index": max_tier_index,
+                "requests_in_window": max_requests_in_window,
                 "current_load": round(current_load, 1),
                 "max_24h_load": round(max_24h_load, 1),
                 "avg_wait_seconds": round(avg_wait, 1),
@@ -598,7 +631,8 @@ class ScrapeQueueManager:
             in_cooldown = False
             if acc.last_used_at:
                 elapsed = (now - acc.last_used_at).total_seconds()
-                if elapsed < self.cooldown_seconds:
+                cooldown = self._get_adaptive_cooldown(acc.id) if self.cooldown_mode == "auto" else self.cooldown_seconds
+                if elapsed < cooldown:
                     in_cooldown = True
             if is_busy or in_cooldown:
                 w_working += 1
