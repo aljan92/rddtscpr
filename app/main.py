@@ -9,7 +9,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from app.database import init_db, get_db, APIRequestLog, RedditAccount
+from app.database import init_db, get_db, APIRequestLog, RedditAccount, SystemSetting
 from app.auth import get_session_info_from_state, login_to_reddit
 from app.scraper import build_subreddit_url, clean_url
 from app.queue_manager import scrape_queue
@@ -876,12 +876,28 @@ async def admin_queue_api(
 @app.post("/admin/queue/settings")
 async def admin_queue_settings(
     cooldown_seconds: float = Form(...),
-    username: str = Depends(verify_admin)
+    username: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
 ):
     if cooldown_seconds < 0.0:
         return RedirectResponse(url="/admin/queue?error=Ungueltiger+Wert+fuer+Pause.", status_code=303)
+    
+    # In Memory aktualisieren
     scrape_queue.cooldown_seconds = cooldown_seconds
-    logger.info(f"Cooldown-Sekunden ueber Admin-UI auf {cooldown_seconds}s geaendert.")
+    
+    # In Datenbank persistieren
+    try:
+        setting = db.query(SystemSetting).filter(SystemSetting.key == "cooldown_seconds").first()
+        if setting:
+            setting.value = str(cooldown_seconds)
+        else:
+            setting = SystemSetting(key="cooldown_seconds", value=str(cooldown_seconds))
+            db.add(setting)
+        db.commit()
+        logger.info(f"Cooldown-Sekunden in DB auf {cooldown_seconds}s aktualisiert.")
+    except Exception as e:
+        logger.error(f"Fehler beim Speichern von cooldown_seconds in DB: {e}")
+        
     return RedirectResponse(url=f"/admin/queue?success=Pause+erfolgreich+auf+{cooldown_seconds}s+geaendert!", status_code=303)
 
 @app.get("/admin/settings", response_class=HTMLResponse)

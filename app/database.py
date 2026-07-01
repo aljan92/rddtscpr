@@ -49,6 +49,14 @@ class APIRequestLog(Base):
     error_message = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
+
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(String(255), nullable=False)
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
     # Datenbank-Migration: Spalten hinzufügen (einzelne Transaktionen pro Spalte für PostgreSQL-Toleranz)

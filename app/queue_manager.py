@@ -4,7 +4,7 @@ import time
 import uuid
 from datetime import datetime
 from sqlalchemy.orm import Session
-from app.database import SessionLocal, RedditAccount, APIRequestLog
+from app.database import SessionLocal, RedditAccount, APIRequestLog, SystemSetting
 from app.scraper import get_subreddit_posts, get_post_comments
 
 logger = logging.getLogger("rddtscpr.queue")
@@ -29,6 +29,7 @@ class ScrapeRequest:
         self.account_username = None
         self.created_at = datetime.utcnow()
         self.is_playground = is_playground
+        self.task = None
 
     def __lt__(self, other):
         # Fallback-Vergleich für die PriorityQueue
@@ -51,6 +52,22 @@ class ScrapeQueueManager:
     def start(self):
         if not self._running:
             self._running = True
+            
+            # Cooldown aus Datenbank laden (für Persistenz nach Deployments)
+            try:
+                with SessionLocal() as db:
+                    setting = db.query(SystemSetting).filter(SystemSetting.key == "cooldown_seconds").first()
+                    if setting:
+                        self.cooldown_seconds = float(setting.value)
+                        logger.info(f"Cooldown-Zeit aus DB geladen: {self.cooldown_seconds}s")
+                    else:
+                        setting = SystemSetting(key="cooldown_seconds", value=str(self.cooldown_seconds))
+                        db.add(setting)
+                        db.commit()
+                        logger.info(f"Standard-Cooldown-Zeit in DB angelegt: {self.cooldown_seconds}s")
+            except Exception as e:
+                logger.error(f"Fehler beim Laden von cooldown_seconds aus DB: {e}")
+
             self.worker_task = asyncio.create_task(self._worker_loop())
             self.refresh_task = asyncio.create_task(self._session_refresh_loop())
             self.load_monitor_task = asyncio.create_task(self._load_monitor_loop())
@@ -94,6 +111,9 @@ class ScrapeQueueManager:
             return await future
         except asyncio.CancelledError:
             future.cancel()
+            if request.task and not request.task.done():
+                logger.info(f"Request {request.id} abgebrochen. Storniere laufenden Scraper-Hintergrundtask...")
+                request.task.cancel()
             logger.info(f"Request {request.id} wurde abgebrochen (Client-Timeout/Disconnect). Future storniert.")
             raise
         finally:
@@ -144,7 +164,8 @@ class ScrapeQueueManager:
                 request.account_username = account.username
                 
                 # Request asynchron in Hintergrund-Task ausführen, damit der Worker blockierungsfrei bleibt
-                asyncio.create_task(self._process_request_concurrent(request, account.id, priority))
+                task = asyncio.create_task(self._process_request_concurrent(request, account.id, priority))
+                request.task = task
                 
             except Exception as e:
                 logger.error(f"Fehler bei der Account-Auswahl im Worker-Loop: {e}")
