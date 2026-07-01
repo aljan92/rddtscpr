@@ -644,10 +644,20 @@ def format_proxy_string(proxy_str: str) -> Optional[str]:
         
     clean_parts = proxy_str_clean.split(":")
     
-    # host:port:user:pass hat genau 4 Teile (z.B. gate.evomi.com, 1000, user, pass)
+    # Check for 4 parts (ambiguous formats like user:pass:host:port or host:port:user:pass)
     if len(clean_parts) == 4:
-        host, port, user, password = clean_parts
-        return f"http://{user}:{password}@{host}:{port}"
+        # Wenn der zweite Teil numerisch ist, handelt es sich um host:port:user:pass
+        if clean_parts[1].isdigit():
+            host, port, user, password = clean_parts
+            return f"{scheme}://{user}:{password}@{host}:{port}"
+        # Wenn der vierte Teil numerisch ist, handelt es sich um user:pass:host:port
+        elif clean_parts[3].isdigit():
+            user, password, host, port = clean_parts
+            return f"{scheme}://{user}:{password}@{host}:{port}"
+        else:
+            # Standard-Fallback
+            host, port, user, password = clean_parts
+            return f"{scheme}://{user}:{password}@{host}:{port}"
         
     # Falls kein Schema vorhanden ist, aber das Format ansonsten okay ist, http:// davorschalten
     if not has_scheme:
@@ -657,7 +667,7 @@ def format_proxy_string(proxy_str: str) -> Optional[str]:
         # Falls es nur host:port ist
         return f"http://{proxy_str}"
         
-    return proxy_str
+    return f"{scheme}://{proxy_str_clean}"
 
 def make_session_state_from_fields(
     reddit_session: str = None,
@@ -1074,16 +1084,17 @@ async def admin_settings_post(
     save_settings(settings)
     
     if rotating_proxy_url is not None:
-        scrape_queue.rotating_proxy_url = rotating_proxy_url.strip()
+        formatted_proxy = format_proxy_string(rotating_proxy_url) or ""
+        scrape_queue.rotating_proxy_url = formatted_proxy
         try:
             db_setting = db.query(SystemSetting).filter(SystemSetting.key == "rotating_proxy_url").first()
             if db_setting:
-                db_setting.value = rotating_proxy_url.strip()
+                db_setting.value = formatted_proxy
             else:
-                db_setting = SystemSetting(key="rotating_proxy_url", value=rotating_proxy_url.strip())
+                db_setting = SystemSetting(key="rotating_proxy_url", value=formatted_proxy)
                 db.add(db_setting)
             db.commit()
-            logger.info(f"Rotating-Proxy-URL in DB aktualisiert: {rotating_proxy_url}")
+            logger.info(f"Rotating-Proxy-URL in DB aktualisiert: {formatted_proxy}")
         except Exception as e:
             logger.error(f"Fehler beim Speichern von rotating_proxy_url in DB: {e}")
             
@@ -1095,7 +1106,7 @@ async def test_rotating_proxy(
     rotating_proxy_url: str = Form(...),
     username: str = Depends(verify_admin)
 ):
-    proxy_url = rotating_proxy_url.strip()
+    proxy_url = format_proxy_string(rotating_proxy_url)
     if not proxy_url:
         return {"success": False, "error": "Keine Proxy-URL angegeben."}
         
