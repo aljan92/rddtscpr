@@ -218,6 +218,26 @@ async def api_subreddit_posts(
             },
             "data": posts
         }
+    except asyncio.TimeoutError:
+        duration = int((time.time() - start_time) * 1000)
+        logger.warning(f"Queue-Timeout bei Subreddit-Scraping ({target}) nach {duration}ms")
+        if not is_playground:
+            with SessionLocal() as db:
+                log_entry = APIRequestLog(
+                    endpoint="/v1/subreddit-posts",
+                    target=target,
+                    status_code=499,
+                    response_time_ms=duration,
+                    method_used=method_used,
+                    proxy_used=proxy_used,
+                    error_message="Queue-Timeout nach 90 Sekunden."
+                )
+                db.add(log_entry)
+                db.commit()
+        raise HTTPException(
+            status_code=504,
+            detail={"error": "Queue timeout", "message": "Request could not be processed within 90 seconds."}
+        )
     except asyncio.CancelledError:
         duration = int((time.time() - start_time) * 1000)
         logger.warning(f"Request abgebrochen/Timeout bei Subreddit-Scraping ({target}) nach {duration}ms")
@@ -365,6 +385,26 @@ async def api_post_comments(
             },
             "data": comments
         }
+    except asyncio.TimeoutError:
+        duration = int((time.time() - start_time) * 1000)
+        logger.warning(f"Queue-Timeout bei Kommentar-Scraping ({post_url}) nach {duration}ms")
+        if not is_playground:
+            with SessionLocal() as db:
+                log_entry = APIRequestLog(
+                    endpoint="/v1/post-comments",
+                    target=post_url,
+                    status_code=499,
+                    response_time_ms=duration,
+                    method_used=method_used,
+                    proxy_used=proxy_used,
+                    error_message="Queue-Timeout nach 90 Sekunden."
+                )
+                db.add(log_entry)
+                db.commit()
+        raise HTTPException(
+            status_code=504,
+            detail={"error": "Queue timeout", "message": "Request could not be processed within 90 seconds."}
+        )
     except asyncio.CancelledError:
         duration = int((time.time() - start_time) * 1000)
         logger.warning(f"Request abgebrochen/Timeout bei Kommentar-Scraping ({post_url}) nach {duration}ms")

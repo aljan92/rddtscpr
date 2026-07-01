@@ -108,7 +108,14 @@ class ScrapeQueueManager:
         # Format in PriorityQueue: (priority, timestamp, request)
         await self.queue.put((10, time.time(), request))
         try:
-            return await future
+            return await asyncio.wait_for(future, timeout=90.0)
+        except asyncio.TimeoutError:
+            future.cancel()
+            if request.task and not request.task.done():
+                logger.info(f"Request {request.id} wegen Queue-Timeout abgebrochen. Storniere laufenden Scraper-Hintergrundtask...")
+                request.task.cancel()
+            logger.info(f"Request {request.id} wurde wegen Queue-Timeout (90s) abgebrochen. Future storniert.")
+            raise
         except asyncio.CancelledError:
             future.cancel()
             if request.task and not request.task.done():
