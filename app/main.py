@@ -9,7 +9,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from app.database import init_db, get_db, APIRequestLog, RedditAccount, SystemSetting
+from app.database import init_db, get_db, SessionLocal, APIRequestLog, RedditAccount, SystemSetting
 from app.auth import get_session_info_from_state, login_to_reddit
 from app.scraper import build_subreddit_url, clean_url
 from app.queue_manager import scrape_queue
