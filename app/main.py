@@ -1050,7 +1050,8 @@ async def admin_settings_get(
     settings = load_settings()
     return templates.TemplateResponse("settings.html", {
         "request": request,
-        "settings": settings
+        "settings": settings,
+        "rotating_proxy_url": scrape_queue.rotating_proxy_url
     })
 
 @app.post("/admin/settings")
@@ -1059,7 +1060,9 @@ async def admin_settings_post(
     sandbox_mode: bool = Form(False),
     rapidapi_key: str = Form(None),
     rapidapi_host: str = Form(None),
-    username: str = Depends(verify_admin)
+    rotating_proxy_url: str = Form(None),
+    username: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
 ):
     current = load_settings()
     settings = {
@@ -1069,8 +1072,90 @@ async def admin_settings_post(
         "rapidapi_host": (rapidapi_host or "").strip()
     }
     save_settings(settings)
+    
+    if rotating_proxy_url is not None:
+        scrape_queue.rotating_proxy_url = rotating_proxy_url.strip()
+        try:
+            db_setting = db.query(SystemSetting).filter(SystemSetting.key == "rotating_proxy_url").first()
+            if db_setting:
+                db_setting.value = rotating_proxy_url.strip()
+            else:
+                db_setting = SystemSetting(key="rotating_proxy_url", value=rotating_proxy_url.strip())
+                db.add(db_setting)
+            db.commit()
+            logger.info(f"Rotating-Proxy-URL in DB aktualisiert: {rotating_proxy_url}")
+        except Exception as e:
+            logger.error(f"Fehler beim Speichern von rotating_proxy_url in DB: {e}")
+            
     logger.info(f"System-Settings aktualisiert: Sandbox Mode = {sandbox_mode}")
     return RedirectResponse(url="/admin/settings?success=Einstellungen+erfolgreich+gespeichert!", status_code=303)
+
+@app.post("/admin/settings/test-rotating-proxy")
+async def test_rotating_proxy(
+    rotating_proxy_url: str = Form(...),
+    username: str = Depends(verify_admin)
+):
+    proxy_url = rotating_proxy_url.strip()
+    if not proxy_url:
+        return {"success": False, "error": "Keine Proxy-URL angegeben."}
+        
+    try:
+        import httpx
+        from urllib.parse import urlparse
+        import uuid
+        
+        # Session-ID anhängen für frische IP
+        test_proxy_url = proxy_url
+        parsed = urlparse(proxy_url)
+        if parsed.username:
+            session_suffix = f"_session-test-{uuid.uuid4().hex[:4]}"
+            new_username = f"{parsed.username}{session_suffix}"
+            netloc = parsed.netloc
+            if '@' in netloc:
+                parts = netloc.split('@', 1)
+                credentials = parts[0]
+                host_port = parts[1]
+                if ':' in credentials:
+                    user, pw = credentials.split(':', 1)
+                    netloc = f"{new_username}:{pw}@{host_port}"
+                else:
+                    netloc = f"{new_username}@{host_port}"
+            test_proxy_url = f"{parsed.scheme}://{netloc}{parsed.path}"
+            
+        proxies = {
+            "http://": test_proxy_url,
+            "https://": test_proxy_url
+        }
+        
+        ip_check_services = [
+            ("https://api.ipify.org?format=json", lambda r: r.json().get("ip", "Unbekannt")),
+            ("https://ifconfig.me/ip", lambda r: r.text.strip()),
+            ("https://icanhazip.com", lambda r: r.text.strip()),
+        ]
+        
+        last_error = None
+        async with httpx.AsyncClient(proxies=proxies, timeout=10.0) as client:
+            for service_url, extract_ip in ip_check_services:
+                try:
+                    res = await client.get(service_url)
+                    if res.status_code == 200:
+                        returned_ip = extract_ip(res)
+                        return {
+                            "success": True, 
+                            "message": f"Proxy-Verbindung erfolgreich! Erkannte IP: {returned_ip}"
+                        }
+                    else:
+                        last_error = f"{service_url} antwortete mit Status {res.status_code}"
+                except Exception as service_err:
+                    last_error = f"{service_url}: {str(service_err)}"
+                    
+        return {
+            "success": False, 
+            "error": f"Proxy-Verbindung fehlgeschlagen. Alle Dienste nicht erreichbar. Letzter Fehler: {last_error}"
+        }
+    except Exception as e:
+        logger.error(f"Fehler beim Testen des rotierenden Proxys: {e}")
+        return {"success": False, "error": f"Interner Fehler: {str(e)}"}
 
 @app.post("/admin/settings/reset-stats")
 async def admin_settings_reset_stats(

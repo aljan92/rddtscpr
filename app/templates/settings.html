@@ -188,6 +188,35 @@
                     </div>
                 </div>
 
+                <!-- Rotierende Proxy-URL für accountloses Scraping -->
+                <div class="border-t border-reddit-border/30 pt-6 space-y-4">
+                    <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
+                        <i data-lucide="shuffle" class="w-4 h-4 text-reddit-orange"></i>
+                        <span>Rotierender Proxy (für accountlose Sessions)</span>
+                    </h3>
+                    <p class="text-xs text-slate-500">
+                        Der Proxy, der für Standard-Scraping-Anfragen (ohne eingewählte Accounts) verwendet wird. Evomi benötigt hierfür ein rotierendes Profil (ohne Sticky-Session).
+                    </p>
+                    <div class="space-y-3">
+                        <div class="flex flex-col md:flex-row space-y-3 md:space-y-0 md:space-x-3">
+                            <div class="relative flex-grow">
+                                <input type="text" name="rotating_proxy_url" id="rotating_proxy_url" value="{{ rotating_proxy_url or '' }}"
+                                       placeholder="http://user:pass@core-residential.evomi.com:1000"
+                                       class="w-full bg-reddit-dark/50 border border-reddit-border rounded-xl px-4 py-3 text-white placeholder-slate-650 focus:outline-none focus:border-reddit-orange focus:ring-1 focus:ring-reddit-orange transition-all duration-200 font-mono text-xs">
+                            </div>
+                            <button type="button" onclick="testRotatingProxy()" id="btn-test-proxy"
+                                    class="bg-slate-800 hover:bg-slate-700 text-white font-medium py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center space-x-2 border border-reddit-border shadow-sm cursor-pointer whitespace-nowrap">
+                                <i data-lucide="activity" class="w-4 h-4 text-emerald-400"></i>
+                                <span>Proxy testen</span>
+                            </button>
+                        </div>
+                        <!-- Test-Ergebnis Anzeige -->
+                        <div id="proxy-test-result" class="hidden p-4 rounded-xl text-xs font-medium flex items-center space-x-3 animate-fade-in">
+                            <!-- Wird per JS befüllt -->
+                        </div>
+                    </div>
+                </div>
+
                 <!-- RapidAPI Playground Credentials -->
                 <div class="border-t border-reddit-border/30 pt-6 space-y-4">
                     <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
@@ -308,6 +337,57 @@
                 eye.setAttribute('data-lucide', 'eye');
             }
             lucide.createIcons();
+        }
+
+        // Rotierenden Proxy testen
+        async function testRotatingProxy() {
+            const proxyInput = document.getElementById('rotating_proxy_url');
+            const btn = document.getElementById('btn-test-proxy');
+            const resultDiv = document.getElementById('proxy-test-result');
+            
+            const proxyUrl = proxyInput.value.trim();
+            if (!proxyUrl) {
+                resultDiv.className = "p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium flex items-center space-x-3";
+                resultDiv.innerHTML = `<i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i><span>Bitte gib zuerst eine Proxy-URL ein.</span>`;
+                resultDiv.classList.remove('hidden');
+                lucide.createIcons();
+                return;
+            }
+            
+            // UI laden lassen
+            btn.disabled = true;
+            btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Prüfe Verbindung...</span>`;
+            
+            resultDiv.classList.add('hidden');
+            
+            try {
+                const formData = new FormData();
+                formData.append('rotating_proxy_url', proxyUrl);
+                
+                const response = await fetch('/admin/settings/test-rotating-proxy', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.className = "p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium flex items-center space-x-3";
+                    resultDiv.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 flex-shrink-0"></i><span>${data.message}</span>`;
+                } else {
+                    resultDiv.className = "p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium flex items-center space-x-3";
+                    resultDiv.innerHTML = `<i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i><span>${data.error}</span>`;
+                }
+                resultDiv.classList.remove('hidden');
+            } catch (err) {
+                resultDiv.className = "p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium flex items-center space-x-3";
+                resultDiv.innerHTML = `<i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i><span>Fehler bei der Verbindung zum Server: ${err.message}</span>`;
+                resultDiv.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i data-lucide="activity" class="w-4 h-4 text-emerald-400"></i><span>Proxy testen</span>`;
+                lucide.createIcons();
+            }
         }
     </script>
 </body>
