@@ -111,7 +111,7 @@ async def scrape_subreddit_posts_json(target: str, sort: str, timeframe: str, li
     
     logger.info(f"JSON-Trick: Rufe URL auf: {json_url} mit Params {params}")
     
-    async with httpx.AsyncClient(headers=DEFAULT_HEADERS, cookies=cookies, proxies=proxies, timeout=15.0, follow_redirects=True) as client:
+    async with httpx.AsyncClient(headers=DEFAULT_HEADERS, cookies=cookies, proxies=proxies, timeout=5.0, follow_redirects=True) as client:
         response = await client.get(json_url, params=params)
         
         if response.status_code == 404:
@@ -171,7 +171,7 @@ async def fetch_more_children(link_id: str, children_ids: list[str], sort: str, 
     
     logger.info(f"MoreChildren: Rufe {len(children_ids)} IDs ab...")
     try:
-        async with httpx.AsyncClient(headers=DEFAULT_HEADERS, cookies=cookies, proxies=proxies, timeout=15.0) as client:
+        async with httpx.AsyncClient(headers=DEFAULT_HEADERS, cookies=cookies, proxies=proxies, timeout=5.0) as client:
             response = await client.get(url, params=params)
             if response.status_code == 200:
                 payload = response.json()
@@ -246,7 +246,7 @@ async def scrape_post_comments_json(post_url: str, sort: str, limit: int, includ
     
     logger.info(f"JSON-Trick: Rufe URL auf: {json_url} mit Params {params}")
     
-    async with httpx.AsyncClient(headers=DEFAULT_HEADERS, cookies=cookies, proxies=proxies, timeout=15.0, follow_redirects=True) as client:
+    async with httpx.AsyncClient(headers=DEFAULT_HEADERS, cookies=cookies, proxies=proxies, timeout=5.0, follow_redirects=True) as client:
         response = await client.get(json_url, params=params)
         
         if response.status_code == 404:
@@ -419,7 +419,7 @@ async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: s
         browser, context, page = await launch_browser(p, session_state, proxy_url)
         try:
             # Zu Reddit navigieren
-            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=20000)
             await page.wait_for_timeout(2000)
             
             payload = await get_page_json(page)
@@ -479,7 +479,7 @@ async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, 
     async with async_playwright() as p:
         browser, context, page = await launch_browser(p, session_state, proxy_url)
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=20000)
             await page.wait_for_timeout(2000)
             
             payload = await get_page_json(page)
@@ -538,8 +538,18 @@ async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, 
 async def get_subreddit_posts(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None) -> tuple[list, str, str]:
     """
     Versucht zuerst die JSON-Methode. Schlägt diese fehl, wird Playwright aufgerufen.
+    Bypasst JSON-Trick direkt bei accountlosen Anfragen, da diese ohne Cookies geblockt werden.
     Gibt (posts_list, "json"|"playwright", updated_session_state) zurück.
     """
+    if not session_state:
+        logger.info("Accountlose Session erkannt: Überspringe JSON-Trick und nutze direkt Playwright-Scraping...")
+        try:
+            posts, new_session = await scrape_subreddit_playwright_fallback(target, sort, timeframe, limit, session_state, proxy_url)
+            return posts, "playwright", new_session
+        except Exception as pe:
+            logger.error(f"Playwright-Scraping ohne Account fehlgeschlagen: {pe}")
+            raise pe
+
     try:
         posts, new_session = await scrape_subreddit_posts_json(target, sort, timeframe, limit, session_state, proxy_url)
         logger.info("Subreddit-Posts erfolgreich via JSON-Trick geladen.")
@@ -555,7 +565,6 @@ async def get_subreddit_posts(target: str, sort: str, timeframe: str, limit: int
             posts, new_session = await scrape_subreddit_playwright_fallback(target, sort, timeframe, limit, session_state, proxy_url)
             return posts, "playwright", new_session
         except ValueError as ve:
-            # Auch Playwright hat einen Client-Fehler erkannt
             raise
         except Exception as pe:
             logger.error(f"Playwright Fallback ebenfalls fehlgeschlagen: {pe}")
@@ -568,8 +577,18 @@ async def scrape_subreddit_playwright_fallback(target: str, sort: str, timeframe
 async def get_post_comments(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, session_state: str = None, proxy_url: str = None) -> tuple[list, str, str]:
     """
     Versucht zuerst die JSON-Methode. Schlägt diese fehl, wird Playwright aufgerufen.
+    Bypasst JSON-Trick direkt bei accountlosen Anfragen, da diese ohne Cookies geblockt werden.
     Gibt (comments_list, "json"|"playwright", updated_session_state) zurück.
     """
+    if not session_state:
+        logger.info("Accountlose Session erkannt: Überspringe JSON-Trick und nutze direkt Playwright-Scraping...")
+        try:
+            comments, new_session = await scrape_post_comments_playwright(post_url, sort, limit, include_replies, load_more, session_state, proxy_url)
+            return comments, "playwright", new_session
+        except Exception as pe:
+            logger.error(f"Playwright-Scraping ohne Account fehlgeschlagen: {pe}")
+            raise pe
+
     try:
         comments, new_session = await scrape_post_comments_json(post_url, sort, limit, include_replies, load_more, session_state, proxy_url)
         logger.info("Kommentare erfolgreich via JSON-Trick geladen.")

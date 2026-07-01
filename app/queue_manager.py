@@ -352,7 +352,7 @@ class ScrapeQueueManager:
                             logger.info(f"Request {request.id} ist bereits {request.attempts} mal anonym fehlgeschlagen. Eskaliere auf echten Reddit-Account als finalen Fallback...")
                             request.requires_nsfw_account = True
                             
-                        wait_time = 5 if request.attempts == 1 else (10 if request.attempts == 2 else 30)
+                        wait_time = 1 if request.attempts == 1 else (2 if request.attempts == 2 else 3)
                         logger.info(f"Versuch {request.attempts} fehlgeschlagen. Re-enqueuing in {wait_time}s...")
                         request.status = "Wartend"
                         request.account_username = None
@@ -476,7 +476,7 @@ class ScrapeQueueManager:
 
                         request.failed_account_ids.add(account.id)
                         if request.attempts < 4:
-                            wait_time = 5 if request.attempts == 1 else (10 if request.attempts == 2 else 30)
+                            wait_time = 1 if request.attempts == 1 else (2 if request.attempts == 2 else 3)
                             logger.info(f"Versuch {request.attempts} fehlgeschlagen. Re-enqueuing in {wait_time}s mit Priorität 0...")
                             request.status = "Wartend"
                             request.account_username = None
