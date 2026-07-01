@@ -1183,8 +1183,11 @@ async def test_rotating_proxy(
                 host_port = parts[1]
                 if ':' in credentials:
                     user, pw = credentials.split(':', 1)
+                    # Vorhandene Suffixe entfernen, um Doppelungen zu vermeiden
+                    import re
+                    clean_pw = re.sub(r"_(?:hard)?session-[A-Za-z0-9]+", "", pw)
                     # Evomi verlangt den Session-Suffix am Passwort, nicht am Benutzernamen
-                    new_pw = f"{pw}{session_suffix}"
+                    new_pw = f"{clean_pw}{session_suffix}"
                     netloc = f"{user}:{new_pw}@{host_port}"
                 else:
                     new_user = f"{credentials}{session_suffix}"
