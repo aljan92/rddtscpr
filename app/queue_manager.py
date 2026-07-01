@@ -27,6 +27,7 @@ class ScrapeRequest:
         self.failed_account_ids = set()
         self.status = "Wartend"  # "Wartend", "Cooldown", "Scraping"
         self.account_username = None
+        self.last_tried_username = None
         self.created_at = datetime.utcnow()
         self.is_playground = is_playground
         self.task = None
@@ -109,20 +110,24 @@ class ScrapeQueueManager:
         await self.queue.put((10, time.time(), request))
         try:
             return await asyncio.wait_for(future, timeout=90.0)
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as e:
             future.cancel()
             if request.task and not request.task.done():
                 logger.info(f"Request {request.id} wegen Queue-Timeout abgebrochen. Storniere laufenden Scraper-Hintergrundtask...")
                 request.task.cancel()
             logger.info(f"Request {request.id} wurde wegen Queue-Timeout (90s) abgebrochen. Future storniert.")
-            raise
-        except asyncio.CancelledError:
+            # Letzten versuchten Account an Exception anhängen
+            e.reddit_username = request.last_tried_username
+            raise e
+        except asyncio.CancelledError as e:
             future.cancel()
             if request.task and not request.task.done():
                 logger.info(f"Request {request.id} abgebrochen. Storniere laufenden Scraper-Hintergrundtask...")
                 request.task.cancel()
             logger.info(f"Request {request.id} wurde abgebrochen (Client-Timeout/Disconnect). Future storniert.")
-            raise
+            # Letzten versuchten Account an Exception anhängen
+            e.reddit_username = request.last_tried_username
+            raise e
         finally:
             self.active_requests.pop(request.id, None)
 
@@ -169,6 +174,7 @@ class ScrapeQueueManager:
                 # Account sperren
                 self.busy_account_ids.add(account.id)
                 request.account_username = account.username
+                request.last_tried_username = account.username
                 
                 # Request asynchron in Hintergrund-Task ausführen, damit der Worker blockierungsfrei bleibt
                 task = asyncio.create_task(self._process_request_concurrent(request, account.id, priority))
@@ -337,6 +343,7 @@ class ScrapeQueueManager:
                         raise Exception(f"Fehlgeschlagen nach {request.attempts} Versuchen. Letzter Fehler: {scrape_error}")
         except Exception as final_exception:
             logger.error(f"Request endgültig fehlgeschlagen: {final_exception}")
+            final_exception.reddit_username = request.last_tried_username
             if not request.future.done():
                 request.future.set_exception(final_exception)
         finally:

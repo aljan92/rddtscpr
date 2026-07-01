@@ -3,6 +3,7 @@ import json
 import time
 import logging
 import asyncio
+from typing import Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -218,9 +219,10 @@ async def api_subreddit_posts(
             },
             "data": posts
         }
-    except asyncio.TimeoutError:
+    except asyncio.TimeoutError as e:
         duration = int((time.time() - start_time) * 1000)
-        logger.warning(f"Queue-Timeout bei Subreddit-Scraping ({target}) nach {duration}ms")
+        username_used = getattr(e, "reddit_username", None) or "-"
+        logger.warning(f"Queue-Timeout bei Subreddit-Scraping ({target}) nach {duration}ms (Account: {username_used})")
         if not is_playground:
             with SessionLocal() as db:
                 log_entry = APIRequestLog(
@@ -230,6 +232,7 @@ async def api_subreddit_posts(
                     response_time_ms=duration,
                     method_used=method_used,
                     proxy_used=proxy_used,
+                    reddit_username=username_used,
                     error_message="Queue-Timeout nach 90 Sekunden."
                 )
                 db.add(log_entry)
@@ -238,9 +241,10 @@ async def api_subreddit_posts(
             status_code=504,
             detail={"error": "Queue timeout", "message": "Request could not be processed within 90 seconds."}
         )
-    except asyncio.CancelledError:
+    except asyncio.CancelledError as e:
         duration = int((time.time() - start_time) * 1000)
-        logger.warning(f"Request abgebrochen/Timeout bei Subreddit-Scraping ({target}) nach {duration}ms")
+        username_used = getattr(e, "reddit_username", None) or "-"
+        logger.warning(f"Request abgebrochen/Timeout bei Subreddit-Scraping ({target}) nach {duration}ms (Account: {username_used})")
         if not is_playground:
             with SessionLocal() as db:
                 log_entry = APIRequestLog(
@@ -250,6 +254,7 @@ async def api_subreddit_posts(
                     response_time_ms=duration,
                     method_used=method_used,
                     proxy_used=proxy_used,
+                    reddit_username=username_used,
                     error_message="Request wurde vom Client abgebrochen oder lief in ein Timeout."
                 )
                 db.add(log_entry)
@@ -269,6 +274,7 @@ async def api_subreddit_posts(
                     response_time_ms=duration,
                     method_used=method_used,
                     proxy_used=proxy_used,
+                    reddit_username="-",
                     error_message=error_msg
                 )
                 db.add(log_entry)
@@ -281,7 +287,8 @@ async def api_subreddit_posts(
     except Exception as e:
         duration = int((time.time() - start_time) * 1000)
         error_msg = str(e)
-        logger.error(f"Fehler bei Subreddit-Scraping ({target}): {error_msg}")
+        username_used = getattr(e, "reddit_username", None) or "-"
+        logger.error(f"Fehler bei Subreddit-Scraping ({target}) mit Account {username_used}: {error_msg}")
         
         if not is_playground:
             with SessionLocal() as db:
@@ -292,6 +299,7 @@ async def api_subreddit_posts(
                     response_time_ms=duration,
                     method_used=method_used,
                     proxy_used=proxy_used,
+                    reddit_username=username_used,
                     error_message=error_msg
                 )
                 db.add(log_entry)
@@ -385,9 +393,10 @@ async def api_post_comments(
             },
             "data": comments
         }
-    except asyncio.TimeoutError:
+    except asyncio.TimeoutError as e:
         duration = int((time.time() - start_time) * 1000)
-        logger.warning(f"Queue-Timeout bei Kommentar-Scraping ({post_url}) nach {duration}ms")
+        username_used = getattr(e, "reddit_username", None) or "-"
+        logger.warning(f"Queue-Timeout bei Kommentar-Scraping ({post_url}) nach {duration}ms (Account: {username_used})")
         if not is_playground:
             with SessionLocal() as db:
                 log_entry = APIRequestLog(
@@ -397,6 +406,7 @@ async def api_post_comments(
                     response_time_ms=duration,
                     method_used=method_used,
                     proxy_used=proxy_used,
+                    reddit_username=username_used,
                     error_message="Queue-Timeout nach 90 Sekunden."
                 )
                 db.add(log_entry)
@@ -405,9 +415,10 @@ async def api_post_comments(
             status_code=504,
             detail={"error": "Queue timeout", "message": "Request could not be processed within 90 seconds."}
         )
-    except asyncio.CancelledError:
+    except asyncio.CancelledError as e:
         duration = int((time.time() - start_time) * 1000)
-        logger.warning(f"Request abgebrochen/Timeout bei Kommentar-Scraping ({post_url}) nach {duration}ms")
+        username_used = getattr(e, "reddit_username", None) or "-"
+        logger.warning(f"Request abgebrochen/Timeout bei Kommentar-Scraping ({post_url}) nach {duration}ms (Account: {username_used})")
         if not is_playground:
             with SessionLocal() as db:
                 log_entry = APIRequestLog(
@@ -417,6 +428,7 @@ async def api_post_comments(
                     response_time_ms=duration,
                     method_used=method_used,
                     proxy_used=proxy_used,
+                    reddit_username=username_used,
                     error_message="Request wurde vom Client abgebrochen oder lief in ein Timeout."
                 )
                 db.add(log_entry)
@@ -436,6 +448,7 @@ async def api_post_comments(
                     response_time_ms=duration,
                     method_used=method_used,
                     proxy_used=proxy_used,
+                    reddit_username="-",
                     error_message=error_msg
                 )
                 db.add(log_entry)
@@ -448,7 +461,8 @@ async def api_post_comments(
     except Exception as e:
         duration = int((time.time() - start_time) * 1000)
         error_msg = str(e)
-        logger.error(f"Fehler bei Kommentar-Scraping: {error_msg}")
+        username_used = getattr(e, "reddit_username", None) or "-"
+        logger.error(f"Fehler bei Kommentar-Scraping mit Account {username_used}: {error_msg}")
         
         if not is_playground:
             with SessionLocal() as db:
@@ -459,6 +473,7 @@ async def api_post_comments(
                     response_time_ms=duration,
                     method_used=method_used,
                     proxy_used=proxy_used,
+                    reddit_username=username_used,
                     error_message=error_msg
                 )
                 db.add(log_entry)
@@ -594,7 +609,7 @@ def make_session_state_from_cookie(cookie_val: str) -> str:
         
     return json.dumps({"cookies": cookies_list})
 
-def format_proxy_string(proxy_str: str) -> str | None:
+def format_proxy_string(proxy_str: str) -> Optional[str]:
     """
     Formatiert einen Proxy-String in das von httpx verlangte Format.
     Erkennt und konvertiert das Format host:port:user:pass in http://user:pass@host:port.
@@ -650,7 +665,7 @@ def make_session_state_from_fields(
     session_tracker: str = None,
     csrf_token: str = None,
     token_v2: str = None
-) -> str | None:
+) -> Optional[str]:
     """Aus bis zu 5 einzelnen Cookie-Feldern einen vollständigen Session-State bauen."""
     httponly_names = {"reddit_session", "token_v2"}
     field_map = {
@@ -794,6 +809,44 @@ async def admin_refresh_session(
         acc.screenshot_viewed = False
         db.commit()
         return RedirectResponse(url=f"/admin/dashboard?error=Refresh-Fehler+fuer+{acc.username}:+{str(e)}", status_code=303)
+
+@app.post("/admin/accounts/{account_id}/rotate-session")
+async def rotate_account_proxy_session(
+    account_id: int,
+    admin_user: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    acc = db.query(RedditAccount).filter(RedditAccount.id == account_id).first()
+    if not acc:
+        return RedirectResponse(url="/admin/dashboard?error=Account+nicht+gefunden", status_code=303)
+    
+    import random
+    import string
+    import re
+    
+    def generate_session_id():
+        return "".join(random.choices(string.ascii_uppercase + string.digits, k=9))
+    
+    new_session_id = generate_session_id()
+    
+    def replace_session(url, new_id):
+        if not url:
+            return url
+        if "hardsession-" in url:
+            return re.sub(r"hardsession-[A-Za-z0-9]+", f"hardsession-{new_id}", url)
+        return url
+
+    old_proxy = acc.proxy_url
+    old_fallback = acc.fallback_proxy_url
+    
+    acc.proxy_url = replace_session(acc.proxy_url, new_session_id)
+    acc.fallback_proxy_url = replace_session(acc.fallback_proxy_url, new_session_id)
+    
+    if acc.proxy_url != old_proxy or acc.fallback_proxy_url != old_fallback:
+        db.commit()
+        return RedirectResponse(url=f"/admin/dashboard?success=Proxy-Session+fuer+{acc.username}+erfolgreich+rotiert!", status_code=303)
+    else:
+        return RedirectResponse(url="/admin/dashboard?error=Keine+hardsession-Spezifikation+im+Proxy+gefunden", status_code=303)
 
 @app.post("/admin/accounts/{account_id}/check")
 async def admin_check_account_session(

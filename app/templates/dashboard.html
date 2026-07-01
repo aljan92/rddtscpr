@@ -252,6 +252,15 @@
                                     </button>
                                     {% endif %}
 
+                                    <!-- Proxy-Session rotieren -->
+                                    {% if acc.proxy_url and 'hardsession-' in acc.proxy_url %}
+                                    <form action="/admin/accounts/{{ acc.id }}/rotate-session" method="POST" class="inline">
+                                        <button type="submit" class="p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-teal-400 hover:text-teal-300 transition-all duration-200 cursor-pointer" title="Proxy-Session (hardsession) rotieren">
+                                            <i data-lucide="key" class="w-4 h-4"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+
                                     <button onclick="showEditModal({{ acc.id }}, '{{ acc.username }}', '{{ acc.proxy_url if acc.proxy_url != 'Kein Proxy' else '' }}', '{{ acc.fallback_proxy_url if acc.fallback_proxy_url != 'Kein Proxy' else '' }}')" class="p-1.5 rounded-lg border border-reddit-border hover:bg-slate-800 text-amber-400 hover:text-amber-300 transition-all duration-200 cursor-pointer" title="Konto bearbeiten">
                                         <i data-lucide="edit-3" class="w-4 h-4"></i>
                                     </button>
