@@ -243,9 +243,7 @@ class ScrapeQueueManager:
                 logger.info(f"Request {request.id} wurde während des Account-Cooldowns abgebrochen. Stoppe Scraping.")
                 return
 
-            # Account als verwendet markieren
-            account.last_used_at = datetime.utcnow()
-            db.commit()
+            # Cooldown-Schlaf abgeschlossen, fahren wir mit dem Scraping fort
 
             session_state = account.session_state
             proxy_url = account.proxy_url
@@ -328,10 +326,8 @@ class ScrapeQueueManager:
                 
                 if not fallback_success:
                     if is_temp:
-                        # Temporärer Fehler: Account nicht bestrafen, nur Zeitstempel erneuern, damit er im Cooldown liegt
+                        # Temporärer Fehler: Account nicht bestrafen, nur verwarnen
                         logger.warning(f"Temporäres Problem bei '{account.username}'. Keine Deaktivierung. Temporärer Cooldown...")
-                        account.last_used_at = datetime.utcnow()
-                        db.commit()
                     else:
                         # Kritischer Fehler: Fehlerpunkte erhöhen
                         account.failure_count = (account.failure_count or 0) + 1
@@ -375,6 +371,15 @@ class ScrapeQueueManager:
             if not request.future.done():
                 request.future.set_exception(final_exception)
         finally:
+            # Cooldown erst nach Abarbeitung der Anfrage starten!
+            if db:
+                try:
+                    account = db.query(RedditAccount).filter(RedditAccount.id == account_id).first()
+                    if account:
+                        account.last_used_at = datetime.utcnow()
+                        db.commit()
+                except Exception as e:
+                    logger.error(f"Fehler beim Aktualisieren von last_used_at im finally-Block: {e}")
             # Account entsperren und Task abschließen
             self.busy_account_ids.discard(account_id)
             self.queue.task_done()
@@ -540,8 +545,8 @@ class ScrapeQueueManager:
                         "error_message": log.error_message or ""
                     })
                     
-                # Accounts laden
-                db_accounts = db.query(RedditAccount).all()
+                # Accounts laden (alphabetisch sortiert für stabile UI)
+                db_accounts = db.query(RedditAccount).order_by(RedditAccount.username).all()
                 now_dt = datetime.utcnow()
                 for acc in db_accounts:
                     if self.cooldown_mode == "auto":

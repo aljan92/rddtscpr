@@ -251,13 +251,12 @@
                         <tr class="border-b border-reddit-border text-slate-400 text-xs font-semibold uppercase tracking-wider bg-reddit-dark/20">
                             <th class="px-6 py-4">Account</th>
                             <th class="px-6 py-4">Pause-Einstellung / Stufe</th>
-                            <th class="px-6 py-4">Letzte Aktivität</th>
                             <th class="px-6 py-4 text-right">Status / Aufgabe</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-reddit-border/30 text-sm" id="accounts-tbody">
                         <tr id="accounts-empty-row">
-                            <td colspan="4" class="px-6 py-8 text-center text-slate-500">
+                            <td colspan="3" class="px-6 py-8 text-center text-slate-500">
                                 Lade Account-Status...
                             </td>
                         </tr>
@@ -435,7 +434,7 @@
             if (!accounts || accounts.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="4" class="px-6 py-8 text-center text-slate-500">
+                        <td colspan="3" class="px-6 py-8 text-center text-slate-500">
                             Keine Accounts konfiguriert.
                         </td>
                     </tr>
@@ -454,11 +453,6 @@
                     statusBadge = `<span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 border border-blue-500/20 text-blue-400"><span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span><span>Cooldown (${acc.remaining_seconds}s)</span></span>`;
                 } else {
                     statusBadge = '<span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/10 border border-slate-700 text-slate-300"><span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span><span>Bereit (Idle)</span></span>';
-                }
-                
-                let lastUsedDisplay = '-';
-                if (acc.last_used_seconds_ago !== null) {
-                    lastUsedDisplay = acc.last_used_seconds_ago + 's her';
                 }
                 
                 // Farbigen Punkt für Stufe ermitteln (nur im auto modus)
@@ -484,7 +478,6 @@
                                 <span class="text-slate-300 font-medium">${acc.cooldown_display}</span>
                             </span>
                         </td>
-                        <td class="px-6 py-4 font-mono text-xs text-slate-400">${lastUsedDisplay}</td>
                         <td class="px-6 py-4 text-right">${statusBadge}</td>
                     </tr>
                 `;
