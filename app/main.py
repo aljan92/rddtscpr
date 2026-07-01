@@ -146,8 +146,7 @@ async def api_subreddit_posts(
     target: str,
     sort: str = "hot",
     timeframe: str = "day",
-    limit: int = 10,
-    db: Session = Depends(get_db)
+    limit: int = 10
 ):
     """
     Extrahiert Posts aus einem bestimmten Subreddit.
@@ -192,17 +191,18 @@ async def api_subreddit_posts(
         
         # In DB loggen
         if not is_playground:
-            log_entry = APIRequestLog(
-                endpoint="/v1/subreddit-posts",
-                target=target,
-                status_code=200,
-                response_time_ms=duration,
-                method_used=method_used,
-                proxy_used=proxy_used,
-                reddit_username=username_used
-            )
-            db.add(log_entry)
-            db.commit()
+            with SessionLocal() as db:
+                log_entry = APIRequestLog(
+                    endpoint="/v1/subreddit-posts",
+                    target=target,
+                    status_code=200,
+                    response_time_ms=duration,
+                    method_used=method_used,
+                    proxy_used=proxy_used,
+                    reddit_username=username_used
+                )
+                db.add(log_entry)
+                db.commit()
         
         scraped_url = build_subreddit_url(target, sort, timeframe)
         if sort == "top" and timeframe:
@@ -222,17 +222,18 @@ async def api_subreddit_posts(
         duration = int((time.time() - start_time) * 1000)
         logger.warning(f"Request abgebrochen/Timeout bei Subreddit-Scraping ({target}) nach {duration}ms")
         if not is_playground:
-            log_entry = APIRequestLog(
-                endpoint="/v1/subreddit-posts",
-                target=target,
-                status_code=499,
-                response_time_ms=duration,
-                method_used=method_used,
-                proxy_used=proxy_used,
-                error_message="Request wurde vom Client abgebrochen oder lief in ein Timeout."
-            )
-            db.add(log_entry)
-            db.commit()
+            with SessionLocal() as db:
+                log_entry = APIRequestLog(
+                    endpoint="/v1/subreddit-posts",
+                    target=target,
+                    status_code=499,
+                    response_time_ms=duration,
+                    method_used=method_used,
+                    proxy_used=proxy_used,
+                    error_message="Request wurde vom Client abgebrochen oder lief in ein Timeout."
+                )
+                db.add(log_entry)
+                db.commit()
         raise
     except ValueError as ve:
         duration = int((time.time() - start_time) * 1000)
@@ -240,17 +241,18 @@ async def api_subreddit_posts(
         logger.warning(f"Client-Fehler bei Subreddit-Scraping ({target}): {error_msg}")
         
         if not is_playground:
-            log_entry = APIRequestLog(
-                endpoint="/v1/subreddit-posts",
-                target=target,
-                status_code=404,
-                response_time_ms=duration,
-                method_used=method_used,
-                proxy_used=proxy_used,
-                error_message=error_msg
-            )
-            db.add(log_entry)
-            db.commit()
+            with SessionLocal() as db:
+                log_entry = APIRequestLog(
+                    endpoint="/v1/subreddit-posts",
+                    target=target,
+                    status_code=404,
+                    response_time_ms=duration,
+                    method_used=method_used,
+                    proxy_used=proxy_used,
+                    error_message=error_msg
+                )
+                db.add(log_entry)
+                db.commit()
         
         raise HTTPException(
             status_code=404,
@@ -262,17 +264,18 @@ async def api_subreddit_posts(
         logger.error(f"Fehler bei Subreddit-Scraping ({target}): {error_msg}")
         
         if not is_playground:
-            log_entry = APIRequestLog(
-                endpoint="/v1/subreddit-posts",
-                target=target,
-                status_code=500,
-                response_time_ms=duration,
-                method_used=method_used,
-                proxy_used=proxy_used,
-                error_message=error_msg
-            )
-            db.add(log_entry)
-            db.commit()
+            with SessionLocal() as db:
+                log_entry = APIRequestLog(
+                    endpoint="/v1/subreddit-posts",
+                    target=target,
+                    status_code=500,
+                    response_time_ms=duration,
+                    method_used=method_used,
+                    proxy_used=proxy_used,
+                    error_message=error_msg
+                )
+                db.add(log_entry)
+                db.commit()
         
         raise HTTPException(
             status_code=500,
@@ -286,8 +289,7 @@ async def api_post_comments(
     sort: str = "confidence",
     limit: int = 10,
     include_replies: bool = False,
-    load_more: bool = False,
-    db: Session = Depends(get_db)
+    load_more: bool = False
 ):
     """
     Extrahiert Kommentare aus einem bestimmten Reddit-Post.
@@ -339,17 +341,18 @@ async def api_post_comments(
         duration = int((time.time() - start_time) * 1000)
         
         if not is_playground:
-            log_entry = APIRequestLog(
-                endpoint="/v1/post-comments",
-                target=post_url,
-                status_code=200,
-                response_time_ms=duration,
-                method_used=method_used,
-                proxy_used=proxy_used,
-                reddit_username=username_used
-            )
-            db.add(log_entry)
-            db.commit()
+            with SessionLocal() as db:
+                log_entry = APIRequestLog(
+                    endpoint="/v1/post-comments",
+                    target=post_url,
+                    status_code=200,
+                    response_time_ms=duration,
+                    method_used=method_used,
+                    proxy_used=proxy_used,
+                    reddit_username=username_used
+                )
+                db.add(log_entry)
+                db.commit()
         
         return {
             "meta": {
@@ -366,17 +369,18 @@ async def api_post_comments(
         duration = int((time.time() - start_time) * 1000)
         logger.warning(f"Request abgebrochen/Timeout bei Kommentar-Scraping ({post_url}) nach {duration}ms")
         if not is_playground:
-            log_entry = APIRequestLog(
-                endpoint="/v1/post-comments",
-                target=post_url,
-                status_code=499,
-                response_time_ms=duration,
-                method_used=method_used,
-                proxy_used=proxy_used,
-                error_message="Request wurde vom Client abgebrochen oder lief in ein Timeout."
-            )
-            db.add(log_entry)
-            db.commit()
+            with SessionLocal() as db:
+                log_entry = APIRequestLog(
+                    endpoint="/v1/post-comments",
+                    target=post_url,
+                    status_code=499,
+                    response_time_ms=duration,
+                    method_used=method_used,
+                    proxy_used=proxy_used,
+                    error_message="Request wurde vom Client abgebrochen oder lief in ein Timeout."
+                )
+                db.add(log_entry)
+                db.commit()
         raise
     except ValueError as ve:
         duration = int((time.time() - start_time) * 1000)
@@ -384,17 +388,18 @@ async def api_post_comments(
         logger.warning(f"Client-Fehler bei Kommentar-Scraping: {error_msg}")
         
         if not is_playground:
-            log_entry = APIRequestLog(
-                endpoint="/v1/post-comments",
-                target=post_url,
-                status_code=404,
-                response_time_ms=duration,
-                method_used=method_used,
-                proxy_used=proxy_used,
-                error_message=error_msg
-            )
-            db.add(log_entry)
-            db.commit()
+            with SessionLocal() as db:
+                log_entry = APIRequestLog(
+                    endpoint="/v1/post-comments",
+                    target=post_url,
+                    status_code=404,
+                    response_time_ms=duration,
+                    method_used=method_used,
+                    proxy_used=proxy_used,
+                    error_message=error_msg
+                )
+                db.add(log_entry)
+                db.commit()
         
         raise HTTPException(
             status_code=404,
@@ -406,17 +411,18 @@ async def api_post_comments(
         logger.error(f"Fehler bei Kommentar-Scraping: {error_msg}")
         
         if not is_playground:
-            log_entry = APIRequestLog(
-                endpoint="/v1/post-comments",
-                target=post_url,
-                status_code=500,
-                response_time_ms=duration,
-                method_used=method_used,
-                proxy_used=proxy_used,
-                error_message=error_msg
-            )
-            db.add(log_entry)
-            db.commit()
+            with SessionLocal() as db:
+                log_entry = APIRequestLog(
+                    endpoint="/v1/post-comments",
+                    target=post_url,
+                    status_code=500,
+                    response_time_ms=duration,
+                    method_used=method_used,
+                    proxy_used=proxy_used,
+                    error_message=error_msg
+                )
+                db.add(log_entry)
+                db.commit()
         
         raise HTTPException(
             status_code=500,
