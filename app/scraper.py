@@ -117,6 +117,9 @@ async def scrape_subreddit_posts_json(target: str, sort: str, timeframe: str, li
         if response.status_code == 404:
             raise ValueError("Subreddit oder Post existiert nicht (HTTP 404).")
         elif response.status_code in [401, 403]:
+            body_lower = response.text.lower()
+            if "blocked by network security" in body_lower or "netzwerksicherheit blockiert" in body_lower:
+                raise Exception("Reddit blockiert die Verbindung (Netzwerksicherheits-Sperre).")
             raise NSFWRequiredException("Zugriff verweigert (HTTP 401/403) - Altersbeschränkung vermutet.")
         elif response.status_code != 200:
             raise Exception(f"Reddit-API lieferte Status Code {response.status_code}")
@@ -252,6 +255,9 @@ async def scrape_post_comments_json(post_url: str, sort: str, limit: int, includ
         if response.status_code == 404:
             raise ValueError("Post existiert nicht (HTTP 404).")
         elif response.status_code in [401, 403]:
+            body_lower = response.text.lower()
+            if "blocked by network security" in body_lower or "netzwerksicherheit blockiert" in body_lower:
+                raise Exception("Reddit blockiert die Verbindung (Netzwerksicherheits-Sperre).")
             raise NSFWRequiredException("Zugriff verweigert (HTTP 401/403) - Altersbeschränkung vermutet.")
         elif response.status_code != 200:
             raise Exception(f"Reddit-API lieferte Status Code {response.status_code}")
@@ -538,18 +544,8 @@ async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, 
 async def get_subreddit_posts(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None) -> tuple[list, str, str]:
     """
     Versucht zuerst die JSON-Methode. Schlägt diese fehl, wird Playwright aufgerufen.
-    Bypasst JSON-Trick direkt bei accountlosen Anfragen, da diese ohne Cookies geblockt werden.
     Gibt (posts_list, "json"|"playwright", updated_session_state) zurück.
     """
-    if not session_state:
-        logger.info("Accountlose Session erkannt: Überspringe JSON-Trick und nutze direkt Playwright-Scraping...")
-        try:
-            posts, new_session = await scrape_subreddit_playwright_fallback(target, sort, timeframe, limit, session_state, proxy_url)
-            return posts, "playwright", new_session
-        except Exception as pe:
-            logger.error(f"Playwright-Scraping ohne Account fehlgeschlagen: {pe}")
-            raise pe
-
     try:
         posts, new_session = await scrape_subreddit_posts_json(target, sort, timeframe, limit, session_state, proxy_url)
         logger.info("Subreddit-Posts erfolgreich via JSON-Trick geladen.")
@@ -559,6 +555,18 @@ async def get_subreddit_posts(target: str, sort: str, timeframe: str, limit: int
         # NICHT den Playwright-Fallback versuchen - das würde den Account unnötig bestrafen.
         logger.warning(f"Client-Fehler beim Subreddit-Scraping (kein Retry): {ve}")
         raise
+    except NSFWRequiredException as nsfw_err:
+        if not session_state:
+            # Im accountlosen Modus werfen wir die Exception hoch, um den Real-Account-Fallback auszulösen
+            raise
+        else:
+            # Mit Account versuchen wir den Playwright Fallback (z.B. falls Cookie-Session abgelaufen)
+            logger.warning(f"NSFWRequiredException mit Account: {nsfw_err}. Starte Playwright Fallback...")
+            try:
+                posts, new_session = await scrape_subreddit_playwright_fallback(target, sort, timeframe, limit, session_state, proxy_url)
+                return posts, "playwright", new_session
+            except Exception as pe:
+                raise pe
     except Exception as e:
         logger.warning(f"JSON-Trick für Subreddit fehlgeschlagen: {e}. Starte Playwright Fallback...")
         try:
@@ -577,18 +585,8 @@ async def scrape_subreddit_playwright_fallback(target: str, sort: str, timeframe
 async def get_post_comments(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, session_state: str = None, proxy_url: str = None) -> tuple[list, str, str]:
     """
     Versucht zuerst die JSON-Methode. Schlägt diese fehl, wird Playwright aufgerufen.
-    Bypasst JSON-Trick direkt bei accountlosen Anfragen, da diese ohne Cookies geblockt werden.
     Gibt (comments_list, "json"|"playwright", updated_session_state) zurück.
     """
-    if not session_state:
-        logger.info("Accountlose Session erkannt: Überspringe JSON-Trick und nutze direkt Playwright-Scraping...")
-        try:
-            comments, new_session = await scrape_post_comments_playwright(post_url, sort, limit, include_replies, load_more, session_state, proxy_url)
-            return comments, "playwright", new_session
-        except Exception as pe:
-            logger.error(f"Playwright-Scraping ohne Account fehlgeschlagen: {pe}")
-            raise pe
-
     try:
         comments, new_session = await scrape_post_comments_json(post_url, sort, limit, include_replies, load_more, session_state, proxy_url)
         logger.info("Kommentare erfolgreich via JSON-Trick geladen.")
@@ -597,6 +595,18 @@ async def get_post_comments(post_url: str, sort: str, limit: int, include_replie
         # Client-Fehler (404, ungültige URL) sofort weiterwerfen
         logger.warning(f"Client-Fehler beim Kommentar-Scraping (kein Retry): {ve}")
         raise
+    except NSFWRequiredException as nsfw_err:
+        if not session_state:
+            # Im accountlosen Modus werfen wir die Exception hoch, um den Real-Account-Fallback auszulösen
+            raise
+        else:
+            # Mit Account versuchen wir den Playwright Fallback
+            logger.warning(f"NSFWRequiredException mit Account: {nsfw_err}. Starte Playwright Fallback...")
+            try:
+                comments, new_session = await scrape_post_comments_playwright(post_url, sort, limit, include_replies, load_more, session_state, proxy_url)
+                return comments, "playwright", new_session
+            except Exception as pe:
+                raise pe
     except Exception as e:
         logger.warning(f"JSON-Trick für Kommentare fehlgeschlagen: {e}. Starte Playwright Fallback...")
         try:
