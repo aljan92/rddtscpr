@@ -1052,6 +1052,49 @@ async def admin_queue_settings(
     
     return RedirectResponse(url="/admin/queue?success=Einstellungen+erfolgreich+gespeichert!", status_code=303)
 
+@app.get("/admin/diagnose-queue")
+async def diagnose_queue(
+    username: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    try:
+        reqs = []
+        for rid, r in list(scrape_queue.active_requests.items()):
+            reqs.append({
+                "id": r.id,
+                "action": r.action,
+                "status": r.status,
+                "attempts": r.attempts,
+                "requires_nsfw_account": r.requires_nsfw_account,
+                "failed_accounts": list(r.failed_account_ids),
+                "account_username": r.account_username
+            })
+        logs = db.query(APIRequestLog).order_by(APIRequestLog.timestamp.desc()).limit(20).all()
+        log_list = []
+        for l in logs:
+            log_list.append({
+                "timestamp": l.timestamp.isoformat() if l.timestamp else None,
+                "endpoint": l.endpoint,
+                "target": l.target,
+                "reddit_username": l.reddit_username,
+                "status_code": l.status_code,
+                "error_message": l.error_message
+            })
+        return {
+            "max_accountless_sessions": scrape_queue.max_accountless_sessions,
+            "rotating_proxy_url_configured": bool(scrape_queue.rotating_proxy_url),
+            "rotating_proxy_url": scrape_queue.rotating_proxy_url,
+            "busy_session_ids": list(scrape_queue.busy_session_ids),
+            "busy_account_ids": list(scrape_queue.busy_account_ids),
+            "active_requests_count": len(scrape_queue.active_requests),
+            "active_requests": reqs,
+            "queue_empty": scrape_queue.queue.empty(),
+            "running": scrape_queue._running,
+            "recent_logs": log_list
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/admin/settings", response_class=HTMLResponse)
 async def admin_settings_get(
     request: Request,
