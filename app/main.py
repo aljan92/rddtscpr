@@ -962,6 +962,7 @@ async def admin_queue(
     return templates.TemplateResponse("queue.html", {
         "request": request,
         "cooldown_seconds": scrape_queue.cooldown_seconds,
+        "cooldown_mode": scrape_queue.cooldown_mode,
         "stats": status["stats"],
         "requests": status["requests"]
     })
@@ -974,30 +975,50 @@ async def admin_queue_api(
 
 @app.post("/admin/queue/settings")
 async def admin_queue_settings(
-    cooldown_seconds: float = Form(...),
+    cooldown_seconds: float = Form(0),
+    cooldown_mode: str = Form("fixed"),
     username: str = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
-    if cooldown_seconds < 0.0:
+    # Modus validieren
+    if cooldown_mode not in ("fixed", "auto"):
+        return RedirectResponse(url="/admin/queue?error=Ungueltiger+Modus.", status_code=303)
+    
+    if cooldown_mode == "fixed" and cooldown_seconds < 0.0:
         return RedirectResponse(url="/admin/queue?error=Ungueltiger+Wert+fuer+Pause.", status_code=303)
     
     # In Memory aktualisieren
-    scrape_queue.cooldown_seconds = cooldown_seconds
+    scrape_queue.cooldown_mode = cooldown_mode
+    if cooldown_mode == "fixed":
+        scrape_queue.cooldown_seconds = cooldown_seconds
     
     # In Datenbank persistieren
     try:
+        # Cooldown-Sekunden
         setting = db.query(SystemSetting).filter(SystemSetting.key == "cooldown_seconds").first()
         if setting:
             setting.value = str(cooldown_seconds)
         else:
             setting = SystemSetting(key="cooldown_seconds", value=str(cooldown_seconds))
             db.add(setting)
-        db.commit()
-        logger.info(f"Cooldown-Sekunden in DB auf {cooldown_seconds}s aktualisiert.")
-    except Exception as e:
-        logger.error(f"Fehler beim Speichern von cooldown_seconds in DB: {e}")
         
-    return RedirectResponse(url=f"/admin/queue?success=Pause+erfolgreich+auf+{cooldown_seconds}s+geaendert!", status_code=303)
+        # Cooldown-Modus
+        mode_setting = db.query(SystemSetting).filter(SystemSetting.key == "cooldown_mode").first()
+        if mode_setting:
+            mode_setting.value = cooldown_mode
+        else:
+            mode_setting = SystemSetting(key="cooldown_mode", value=cooldown_mode)
+            db.add(mode_setting)
+        
+        db.commit()
+        logger.info(f"Cooldown-Einstellungen aktualisiert: Modus={cooldown_mode}, Sekunden={cooldown_seconds}s")
+    except Exception as e:
+        logger.error(f"Fehler beim Speichern von cooldown_seconds/cooldown_mode in DB: {e}")
+    
+    if cooldown_mode == "auto":
+        return RedirectResponse(url="/admin/queue?success=Automatik-Modus+aktiviert!", status_code=303)
+    else:
+        return RedirectResponse(url=f"/admin/queue?success=Feste+Pause+auf+{cooldown_seconds}s+gesetzt!", status_code=303)
 
 @app.get("/admin/settings", response_class=HTMLResponse)
 async def admin_settings_get(

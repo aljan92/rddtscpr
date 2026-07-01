@@ -9,6 +9,15 @@ from app.scraper import get_subreddit_posts, get_post_comments
 
 logger = logging.getLogger("rddtscpr.queue")
 
+# Adaptive Cooldown-Stufen: Schwellwerte = maximale Requests im 60s-Fenster für diese Stufe
+ADAPTIVE_TIERS = [
+    {"name": "Sprint",    "cooldown": 2,  "threshold": 5},
+    {"name": "Normal",    "cooldown": 5,  "threshold": 10},
+    {"name": "Vorsicht",  "cooldown": 10, "threshold": 15},
+    {"name": "Defensiv",  "cooldown": 15, "threshold": 20},
+    {"name": "Maximum",   "cooldown": 20, "threshold": float("inf")},
+]
+
 def is_temporary_network_issue(err: Exception) -> bool:
     """Prüft, ob es sich um einen temporären Proxy- oder Netzwerkfehler handelt."""
     err_msg_lower = str(err).lower()
@@ -43,7 +52,11 @@ class ScrapeQueueManager:
         self.refresh_task = None
         self.load_monitor_task = None
         self._running = False
-        self.cooldown_seconds = 3.0  # Mindestabstand zwischen Zugriffen desselben Accounts
+        self.cooldown_seconds = 3.0  # Mindestabstand zwischen Zugriffen desselben Accounts (Fester Modus)
+        self.cooldown_mode = "fixed"  # "fixed" oder "auto"
+        self.adaptive_tier = 0  # Aktuelle Stufe (0-4, Index in ADAPTIVE_TIERS)
+        self.request_timestamps = []  # Rolling Window: Zeitstempel der letzten 60s (global)
+        self.last_request_time = 0  # Zeitpunkt der letzten abgeschlossenen Anfrage
         self.active_requests = {}  # id -> ScrapeRequest
         self.busy_account_ids = set()  # In-Memory Sperre für Accounts, die gerade arbeiten
         self.load_history = []  # [(timestamp, load_pct)] over the last 24 hours
@@ -54,7 +67,7 @@ class ScrapeQueueManager:
         if not self._running:
             self._running = True
             
-            # Cooldown aus Datenbank laden (für Persistenz nach Deployments)
+            # Cooldown und Modus aus Datenbank laden (für Persistenz nach Deployments)
             try:
                 with SessionLocal() as db:
                     setting = db.query(SystemSetting).filter(SystemSetting.key == "cooldown_seconds").first()
@@ -66,8 +79,19 @@ class ScrapeQueueManager:
                         db.add(setting)
                         db.commit()
                         logger.info(f"Standard-Cooldown-Zeit in DB angelegt: {self.cooldown_seconds}s")
+                    
+                    # Cooldown-Modus laden
+                    mode_setting = db.query(SystemSetting).filter(SystemSetting.key == "cooldown_mode").first()
+                    if mode_setting:
+                        self.cooldown_mode = mode_setting.value
+                        logger.info(f"Cooldown-Modus aus DB geladen: {self.cooldown_mode}")
+                    else:
+                        mode_setting = SystemSetting(key="cooldown_mode", value=self.cooldown_mode)
+                        db.add(mode_setting)
+                        db.commit()
+                        logger.info(f"Standard-Cooldown-Modus in DB angelegt: {self.cooldown_mode}")
             except Exception as e:
-                logger.error(f"Fehler beim Laden von cooldown_seconds aus DB: {e}")
+                logger.error(f"Fehler beim Laden von cooldown_seconds/cooldown_mode aus DB: {e}")
 
             self.worker_task = asyncio.create_task(self._worker_loop())
             self.refresh_task = asyncio.create_task(self._session_refresh_loop())
@@ -243,6 +267,9 @@ class ScrapeQueueManager:
                     account.session_state = new_session
                 if not request.is_playground:
                     account.request_count = (account.request_count or 0) + 1
+                # Adaptive Cooldown: Request-Zeitstempel für Rolling Window erfassen
+                self.request_timestamps.append(time.time())
+                self.last_request_time = time.time()
                 db.commit()
                 
                 if not request.future.done():
@@ -369,13 +396,57 @@ class ScrapeQueueManager:
         accounts.sort(key=lambda a: a.last_used_at or datetime.min)
         return accounts[0]
 
+    def _get_adaptive_cooldown(self) -> float:
+        """Berechnet den adaptiven Cooldown basierend auf dem rollierenden 60s-Fenster."""
+        now = time.time()
+        
+        # Rolling Window bereinigen: nur Timestamps der letzten 60s behalten
+        self.request_timestamps = [ts for ts in self.request_timestamps if now - ts < 60]
+        requests_in_window = len(self.request_timestamps)
+        
+        # Herunterskalierung: Wenn lange keine Anfrage kam, Stufe senken
+        if self.last_request_time > 0:
+            idle_time = now - self.last_request_time
+            if idle_time > 60:
+                # Längere Stille → direkt auf Sprint
+                self.adaptive_tier = 0
+            elif idle_time > 30 and self.adaptive_tier > 0:
+                # Moderate Stille → eine Stufe runter
+                self.adaptive_tier = max(0, self.adaptive_tier - 1)
+        
+        # Hochskalierung: Basierend auf Anfragenzahl im Fenster
+        new_tier = 0
+        for i, tier in enumerate(ADAPTIVE_TIERS):
+            if requests_in_window < tier["threshold"]:
+                new_tier = i
+                break
+        else:
+            new_tier = len(ADAPTIVE_TIERS) - 1
+        
+        # Stufe darf nur steigen (nicht fallen) basierend auf Anfragenzahl —
+        # das Fallen passiert nur über die Idle-Logik oben
+        if new_tier > self.adaptive_tier:
+            self.adaptive_tier = new_tier
+        
+        tier_info = ADAPTIVE_TIERS[self.adaptive_tier]
+        return float(tier_info["cooldown"])
+
     async def _enforce_cooldown(self, account: RedditAccount):
         """Erzwingt das Cooldown-Limit für das gewählte Konto."""
+        # Effektiven Cooldown bestimmen (je nach Modus)
+        if self.cooldown_mode == "auto":
+            effective_cooldown = self._get_adaptive_cooldown()
+        else:
+            effective_cooldown = self.cooldown_seconds
+        
         if account.last_used_at:
             elapsed = (datetime.utcnow() - account.last_used_at).total_seconds()
-            wait_time = max(0.0, self.cooldown_seconds - elapsed)
+            wait_time = max(0.0, effective_cooldown - elapsed)
             if wait_time > 0:
-                logger.info(f"Cooldown für Account '{account.username}': Warte {wait_time:.2f}s...")
+                tier_label = ""
+                if self.cooldown_mode == "auto":
+                    tier_label = f" [Stufe: {ADAPTIVE_TIERS[self.adaptive_tier]['name']}]"
+                logger.info(f"Cooldown für Account '{account.username}': Warte {wait_time:.2f}s{tier_label}...")
                 await asyncio.sleep(wait_time)
 
     async def _execute_scrape(self, action: str, params: dict, session_state: str, proxy_url: str) -> tuple[list, str, str]:
@@ -467,12 +538,29 @@ class ScrapeQueueManager:
         except Exception as e:
             logger.error(f"Fehler beim Laden der API-Statistiken für Queue-API: {e}")
             
+        # Effektiven Cooldown bestimmen
+        if self.cooldown_mode == "auto":
+            effective_cooldown = self._get_adaptive_cooldown()
+            tier_info = ADAPTIVE_TIERS[self.adaptive_tier]
+        else:
+            effective_cooldown = self.cooldown_seconds
+            tier_info = None
+        
+        # Rolling Window bereinigen für korrekte Anzeige
+        now = time.time()
+        self.request_timestamps = [ts for ts in self.request_timestamps if now - ts < 60]
+        
         return {
             "stats": {
                 "total": len(items),
                 "pending": pending_count,
                 "active": active_count,
                 "cooldown_seconds": self.cooldown_seconds,
+                "cooldown_mode": self.cooldown_mode,
+                "effective_cooldown": round(effective_cooldown, 1),
+                "adaptive_tier_name": tier_info["name"] if tier_info else None,
+                "adaptive_tier_index": self.adaptive_tier,
+                "requests_in_window": len(self.request_timestamps),
                 "current_load": round(current_load, 1),
                 "max_24h_load": round(max_24h_load, 1),
                 "avg_wait_seconds": round(avg_wait, 1),

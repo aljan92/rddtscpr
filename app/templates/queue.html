@@ -109,7 +109,30 @@
                     </p>
                     
                     <form action="/admin/queue/settings" method="POST" class="space-y-4 pt-2">
+                        <!-- Mode Toggle -->
                         <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                                Cooldown-Modus
+                            </label>
+                            <div class="flex rounded-xl overflow-hidden border border-reddit-border">
+                                <button type="button" onclick="setCooldownMode('fixed')"
+                                        id="mode-btn-fixed"
+                                        class="flex-1 py-2.5 px-3 text-xs font-semibold transition-all duration-200 flex items-center justify-center space-x-1.5 cursor-pointer">
+                                    <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+                                    <span>Feste Pause</span>
+                                </button>
+                                <button type="button" onclick="setCooldownMode('auto')"
+                                        id="mode-btn-auto"
+                                        class="flex-1 py-2.5 px-3 text-xs font-semibold transition-all duration-200 flex items-center justify-center space-x-1.5 cursor-pointer">
+                                    <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+                                    <span>Automatik</span>
+                                </button>
+                            </div>
+                            <input type="hidden" name="cooldown_mode" id="cooldown_mode" value="{{ cooldown_mode }}">
+                        </div>
+
+                        <!-- Fixed Mode: Manual Input -->
+                        <div id="fixed-mode-settings">
                             <label for="cooldown_seconds" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
                                 Pause zwischen Anfragen (Sekunden)
                             </label>
@@ -119,6 +142,60 @@
                                 <span class="absolute right-4 top-3 text-slate-500 text-sm font-medium">Sek.</span>
                             </div>
                         </div>
+
+                        <!-- Auto Mode: Tier Display -->
+                        <div id="auto-mode-display" style="display: none;">
+                            <div class="space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Aktive Stufe</span>
+                                    <span id="adaptive-tier-badge" class="inline-flex items-center text-xs px-2.5 py-1 rounded-full font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                        Sprint — 2s
+                                    </span>
+                                </div>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs text-slate-400">Effektiver Cooldown</span>
+                                    <span class="text-sm font-bold text-white" id="effective-cooldown-display">2.0s</span>
+                                </div>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs text-slate-400">Anfragen (60s-Fenster)</span>
+                                    <span class="text-sm font-bold text-white" id="requests-in-window-display">0</span>
+                                </div>
+                                <!-- Tier Scale Visualization -->
+                                <div class="space-y-1.5 pt-1">
+                                    <div class="flex items-center space-x-2 text-xs" id="tier-row-0">
+                                        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                        <span class="text-slate-400 flex-1">Sprint</span>
+                                        <span class="text-slate-500 font-mono">2s</span>
+                                        <span class="text-slate-600 font-mono text-[10px]">&lt;5 req</span>
+                                    </div>
+                                    <div class="flex items-center space-x-2 text-xs" id="tier-row-1">
+                                        <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+                                        <span class="text-slate-400 flex-1">Normal</span>
+                                        <span class="text-slate-500 font-mono">5s</span>
+                                        <span class="text-slate-600 font-mono text-[10px]">5-9 req</span>
+                                    </div>
+                                    <div class="flex items-center space-x-2 text-xs" id="tier-row-2">
+                                        <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                                        <span class="text-slate-400 flex-1">Vorsicht</span>
+                                        <span class="text-slate-500 font-mono">10s</span>
+                                        <span class="text-slate-600 font-mono text-[10px]">10-14 req</span>
+                                    </div>
+                                    <div class="flex items-center space-x-2 text-xs" id="tier-row-3">
+                                        <span class="w-2 h-2 rounded-full bg-orange-400"></span>
+                                        <span class="text-slate-400 flex-1">Defensiv</span>
+                                        <span class="text-slate-500 font-mono">15s</span>
+                                        <span class="text-slate-600 font-mono text-[10px]">15-19 req</span>
+                                    </div>
+                                    <div class="flex items-center space-x-2 text-xs" id="tier-row-4">
+                                        <span class="w-2 h-2 rounded-full bg-rose-400"></span>
+                                        <span class="text-slate-400 flex-1">Maximum</span>
+                                        <span class="text-slate-500 font-mono">20s</span>
+                                        <span class="text-slate-600 font-mono text-[10px]">20+ req</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <button type="submit" class="w-full bg-reddit-orange hover:bg-reddit-orange/90 text-white font-medium py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center space-x-2 shadow-lg shadow-reddit-orange/20">
                             <i data-lucide="save" class="w-4 h-4"></i>
                             <span>Speichern</span>
@@ -331,6 +408,82 @@
         // Lucide Icons initialisieren
         lucide.createIcons();
 
+        // ========= Cooldown Mode Toggle =========
+        const TIER_COLORS = [
+            { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
+            { bg: 'bg-blue-500/10',    text: 'text-blue-400',    border: 'border-blue-500/20' },
+            { bg: 'bg-amber-500/10',   text: 'text-amber-400',   border: 'border-amber-500/20' },
+            { bg: 'bg-orange-500/10',  text: 'text-orange-400',  border: 'border-orange-500/20' },
+            { bg: 'bg-rose-500/10',    text: 'text-rose-400',    border: 'border-rose-500/20' },
+        ];
+
+        function setCooldownMode(mode) {
+            document.getElementById('cooldown_mode').value = mode;
+            const fixedSettings = document.getElementById('fixed-mode-settings');
+            const autoDisplay = document.getElementById('auto-mode-display');
+            const btnFixed = document.getElementById('mode-btn-fixed');
+            const btnAuto = document.getElementById('mode-btn-auto');
+
+            if (mode === 'auto') {
+                fixedSettings.style.display = 'none';
+                autoDisplay.style.display = 'block';
+                btnAuto.className = 'flex-1 py-2.5 px-3 text-xs font-semibold transition-all duration-200 flex items-center justify-center space-x-1.5 cursor-pointer bg-reddit-orange text-white';
+                btnFixed.className = 'flex-1 py-2.5 px-3 text-xs font-semibold transition-all duration-200 flex items-center justify-center space-x-1.5 cursor-pointer text-slate-400 hover:text-slate-300';
+            } else {
+                fixedSettings.style.display = 'block';
+                autoDisplay.style.display = 'none';
+                btnFixed.className = 'flex-1 py-2.5 px-3 text-xs font-semibold transition-all duration-200 flex items-center justify-center space-x-1.5 cursor-pointer bg-reddit-orange text-white';
+                btnAuto.className = 'flex-1 py-2.5 px-3 text-xs font-semibold transition-all duration-200 flex items-center justify-center space-x-1.5 cursor-pointer text-slate-400 hover:text-slate-300';
+            }
+            lucide.createIcons();
+        }
+
+        function updateAdaptiveDisplay(stats) {
+            if (stats.cooldown_mode !== 'auto') return;
+            
+            const tierIndex = stats.adaptive_tier_index || 0;
+            const tierName = stats.adaptive_tier_name || 'Sprint';
+            const effectiveCooldown = stats.effective_cooldown || 2;
+            const requestsInWindow = stats.requests_in_window || 0;
+
+            // Badge aktualisieren
+            const badge = document.getElementById('adaptive-tier-badge');
+            if (badge) {
+                const colors = TIER_COLORS[tierIndex] || TIER_COLORS[0];
+                badge.className = `inline-flex items-center text-xs px-2.5 py-1 rounded-full font-bold ${colors.bg} ${colors.text} border ${colors.border}`;
+                badge.innerText = `${tierName} — ${effectiveCooldown}s`;
+            }
+
+            // Cooldown + Window anzeigen
+            const cooldownEl = document.getElementById('effective-cooldown-display');
+            if (cooldownEl) cooldownEl.innerText = effectiveCooldown + 's';
+            
+            const windowEl = document.getElementById('requests-in-window-display');
+            if (windowEl) windowEl.innerText = requestsInWindow;
+
+            // Tier-Zeilen hervorheben
+            for (let i = 0; i < 5; i++) {
+                const row = document.getElementById('tier-row-' + i);
+                if (row) {
+                    if (i === tierIndex) {
+                        row.style.opacity = '1';
+                        row.style.fontWeight = 'bold';
+                        row.style.background = 'rgba(255,255,255,0.03)';
+                        row.style.borderRadius = '6px';
+                        row.style.padding = '2px 4px';
+                    } else {
+                        row.style.opacity = '0.5';
+                        row.style.fontWeight = 'normal';
+                        row.style.background = 'none';
+                        row.style.padding = '0';
+                    }
+                }
+            }
+        }
+
+        // Initial mode setzen basierend auf Server-Wert
+        setCooldownMode('{{ cooldown_mode }}');
+
         // AJAX Polling zur Live-Aktualisierung
         async function updateQueue() {
             try {
@@ -346,6 +499,9 @@
                 document.getElementById('stat-load').innerText = data.stats.current_load + '%';
                 document.getElementById('stat-load-peak').innerText = data.stats.max_24h_load + '%';
                 document.getElementById('stat-timeouts').innerText = data.stats.global_timeouts;
+
+                // Adaptive Cooldown live aktualisieren
+                updateAdaptiveDisplay(data.stats);
                 
                 // Sparkline aktualisieren
                 const sparkline = data.sparkline || [];
