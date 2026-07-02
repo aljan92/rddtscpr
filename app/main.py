@@ -1092,6 +1092,16 @@ async def diagnose_queue(
                 "failure_count": a.failure_count,
                 "session_info": get_session_info_from_state(a.session_state)
             })
+        # Session-Warmup Cache Status
+        warmup_status = {}
+        for slot, cache in scrape_queue.session_cache.items():
+            warmup_status[f"Session {slot}"] = {
+                "status": cache.get("status", "unknown"),
+                "last_warmed": cache.get("last_warmed").isoformat() if cache.get("last_warmed") else None,
+                "last_used": cache.get("last_used").isoformat() if cache.get("last_used") else None,
+                "cookies_count": len(json.loads(cache.get("cookies", "{}")).get("cookies", [])) if cache.get("cookies") else 0,
+                "proxy_url": cache.get("proxy_url", "")[-30:] if cache.get("proxy_url") else None
+            }
         return {
             "max_accountless_sessions": scrape_queue.max_accountless_sessions,
             "rotating_proxy_url_configured": bool(scrape_queue.rotating_proxy_url),
@@ -1102,6 +1112,7 @@ async def diagnose_queue(
             "active_requests": reqs,
             "queue_empty": scrape_queue.queue.empty(),
             "running": scrape_queue._running,
+            "session_warmup_cache": warmup_status,
             "recent_logs": log_list,
             "active_accounts": acc_list
         }

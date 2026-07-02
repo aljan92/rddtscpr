@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import time
 import uuid
@@ -8,6 +9,12 @@ from app.database import SessionLocal, RedditAccount, APIRequestLog, SystemSetti
 from app.scraper import get_subreddit_posts, get_post_comments, NSFWRequiredException
 
 logger = logging.getLogger("rddtscpr.queue")
+
+# URLs zum Aufwärmen von Guest-Sessions (natürliche Navigation simulieren)
+WARMUP_URLS = [
+    "https://www.reddit.com/",
+    "https://www.reddit.com/r/AskReddit/",
+]
 
 # Adaptive Cooldown-Stufen: Schwellwerte = maximale Requests im 60s-Fenster für diese Stufe
 ADAPTIVE_TIERS = [
@@ -52,6 +59,7 @@ class ScrapeQueueManager:
         self.worker_task = None
         self.refresh_task = None
         self.load_monitor_task = None
+        self.warmup_task = None
         self._running = False
         self.cooldown_seconds = 3.0  # Mindestabstand zwischen Zugriffen desselben Accounts (Fester Modus)
         self.cooldown_mode = "fixed"  # "fixed" oder "auto"
@@ -66,6 +74,8 @@ class ScrapeQueueManager:
         self.load_history = []  # [(timestamp, load_pct)] over the last 24 hours
         self.sparkline_history = []  # last 60 load values for sparkline
         self.wait_times = []  # delay in seconds for last 100 requests
+        # Session-Warmup: Gecachte Guest-Cookies + persistente Proxy-URLs pro Slot
+        self.session_cache = {}  # slot -> {"cookies": str (JSON), "proxy_url": str, "last_warmed": datetime, "last_used": datetime, "status": str}
 
     def start(self):
         if not self._running:
@@ -122,7 +132,8 @@ class ScrapeQueueManager:
             self.worker_task = asyncio.create_task(self._worker_loop())
             self.refresh_task = asyncio.create_task(self._session_refresh_loop())
             self.load_monitor_task = asyncio.create_task(self._load_monitor_loop())
-            logger.info("ScrapeQueueManager erfolgreich gestartet (inkl. Session-Refresh & Load-Monitor Tasks).")
+            self.warmup_task = asyncio.create_task(self._session_warmup_loop())
+            logger.info("ScrapeQueueManager erfolgreich gestartet (inkl. Session-Refresh, Load-Monitor & Session-Warmup Tasks).")
 
     async def stop(self):
         self._running = False
@@ -142,6 +153,12 @@ class ScrapeQueueManager:
             self.load_monitor_task.cancel()
             try:
                 await self.load_monitor_task
+            except asyncio.CancelledError:
+                pass
+        if self.warmup_task:
+            self.warmup_task.cancel()
+            try:
+                await self.warmup_task
             except asyncio.CancelledError:
                 pass
         logger.info("ScrapeQueueManager beendet.")
@@ -299,6 +316,147 @@ class ScrapeQueueManager:
             logger.error(f"Fehler beim Erstellen des rotierenden Proxys: {e}")
             return self.rotating_proxy_url
 
+    async def _warmup_session(self, slot: int) -> bool:
+        """Wärmt eine einzelne Session auf, indem Reddit-Seiten besucht werden um Guest-Cookies zu sammeln."""
+        from playwright.async_api import async_playwright
+        from playwright_stealth import Stealth
+        from urllib.parse import urlparse
+        
+        # Persistente Proxy-URL pro Slot: Beim ersten Mal generieren, danach wiederverwenden
+        if slot in self.session_cache and self.session_cache[slot].get("proxy_url"):
+            proxy_url = self.session_cache[slot]["proxy_url"]
+        else:
+            proxy_url = self._prepare_rotating_proxy()
+        
+        if not proxy_url:
+            logger.warning(f"Session-Warmup: Kein Proxy konfiguriert für Slot {slot}. Überspringe.")
+            return False
+        
+        logger.info(f"Session-Warmup: Wärme Session {slot} auf (Proxy: ...{proxy_url[-20:]})...")
+        
+        try:
+            parsed = urlparse(proxy_url)
+            playwright_proxy = {
+                "server": f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+            }
+            if parsed.username and parsed.password:
+                playwright_proxy["username"] = parsed.username
+                playwright_proxy["password"] = parsed.password
+            
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
+                    headless=True,
+                    proxy=playwright_proxy,
+                    args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+                )
+                
+                context = await browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    viewport={"width": 1280, "height": 800},
+                    locale="de-DE",
+                    timezone_id="Europe/Berlin"
+                )
+                page = await context.new_page()
+                await Stealth().apply_stealth_async(page)
+                
+                # Nacheinander Warmup-URLs besuchen um natürliche Navigation zu simulieren
+                for warmup_url in WARMUP_URLS:
+                    try:
+                        await page.goto(warmup_url, wait_until="domcontentloaded", timeout=25000)
+                        await page.wait_for_timeout(3000)
+                    except Exception as nav_err:
+                        logger.warning(f"Session-Warmup Slot {slot}: Navigation zu {warmup_url} fehlgeschlagen: {nav_err}")
+                
+                # Storage-State (Cookies + localStorage) extrahieren
+                storage_state = await context.storage_state()
+                cookies_count = len(storage_state.get("cookies", []))
+                
+                if cookies_count == 0:
+                    logger.warning(f"Session-Warmup Slot {slot}: Keine Cookies erhalten. Session möglicherweise blockiert.")
+                    await browser.close()
+                    return False
+                
+                # Warmup-Daten im Cache speichern
+                session_state_json = json.dumps(storage_state)
+                self.session_cache[slot] = {
+                    "cookies": session_state_json,
+                    "proxy_url": proxy_url,
+                    "last_warmed": datetime.utcnow(),
+                    "last_used": datetime.utcnow(),
+                    "status": "warm"
+                }
+                
+                logger.info(f"Session-Warmup Slot {slot}: Erfolgreich! {cookies_count} Cookies gecacht.")
+                await browser.close()
+                return True
+                
+        except Exception as e:
+            logger.error(f"Session-Warmup Slot {slot}: Fehler: {e}")
+            return False
+
+    async def _session_warmup_loop(self):
+        """Background-Task: Wärmt Sessions beim Start auf und refresht sie periodisch."""
+        logger.info("Session-Warmup-Loop gestartet.")
+        
+        # Initialer Warmup: Alle Slots aufwärmen (mit kurzer Pause zwischen Slots)
+        await asyncio.sleep(5)  # Kurz warten bis alles initialisiert ist
+        
+        if self.max_accountless_sessions > 0 and self.rotating_proxy_url:
+            logger.info(f"Session-Warmup: Starte initialen Warmup für {self.max_accountless_sessions} Slots...")
+            for slot in range(1, self.max_accountless_sessions + 1):
+                if not self._running:
+                    break
+                success = await self._warmup_session(slot)
+                if not success:
+                    logger.warning(f"Session-Warmup: Slot {slot} konnte nicht aufgewärmt werden. Versuche erneut in 10s...")
+                    await asyncio.sleep(10)
+                    await self._warmup_session(slot)  # Zweiter Versuch
+                await asyncio.sleep(2)  # Kleine Pause zwischen Slots
+            
+            warm_count = sum(1 for s in self.session_cache.values() if s.get("status") == "warm")
+            logger.info(f"Session-Warmup: Initialer Warmup abgeschlossen. {warm_count}/{self.max_accountless_sessions} Sessions warm.")
+        else:
+            logger.info("Session-Warmup: Keine accountlosen Sessions konfiguriert oder kein Proxy. Warmup übersprungen.")
+        
+        # Periodischer Refresh-Loop (alle 5 Minuten prüfen, ob Sessions aufgefrischt werden müssen)
+        while self._running:
+            try:
+                await asyncio.sleep(300)  # Alle 5 Minuten prüfen
+                
+                if self.max_accountless_sessions <= 0 or not self.rotating_proxy_url:
+                    continue
+                
+                now = datetime.utcnow()
+                for slot in range(1, self.max_accountless_sessions + 1):
+                    if not self._running:
+                        break
+                    
+                    cache_entry = self.session_cache.get(slot)
+                    
+                    # Kein Cache vorhanden → Aufwärmen
+                    if not cache_entry or cache_entry.get("status") != "warm":
+                        logger.info(f"Session-Warmup Refresh: Slot {slot} hat keinen gültigen Cache. Wärme auf...")
+                        await self._warmup_session(slot)
+                        await asyncio.sleep(2)
+                        continue
+                    
+                    # Session ist seit >25 Minuten unbenutzt → Auffrischen
+                    last_used = cache_entry.get("last_used", cache_entry.get("last_warmed", now))
+                    idle_minutes = (now - last_used).total_seconds() / 60
+                    
+                    if idle_minutes > 25:
+                        logger.info(f"Session-Warmup Refresh: Slot {slot} ist seit {idle_minutes:.0f}min idle. Frische auf...")
+                        await self._warmup_session(slot)
+                        await asyncio.sleep(2)
+                        
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Session-Warmup-Loop Fehler: {e}")
+                await asyncio.sleep(60)
+        
+        logger.info("Session-Warmup-Loop beendet.")
+
     async def _process_request_concurrent(self, request: ScrapeRequest, account_id: int = None, session_slot: int = None, current_priority: int = 10):
         db = None
         try:
@@ -318,8 +476,18 @@ class ScrapeQueueManager:
                 # VIRTUELLE SESSION ABARBEITUNG (Accountless)
                 # ==========================================
                 username = f"Session {session_slot}"
-                proxy_url = self._prepare_rotating_proxy()
-                session_state = None
+                
+                # Gecachte Warm-Cookies und persistenten Proxy aus dem Cache verwenden
+                cache_entry = self.session_cache.get(session_slot)
+                if cache_entry and cache_entry.get("status") == "warm":
+                    session_state = cache_entry["cookies"]
+                    proxy_url = cache_entry["proxy_url"]
+                    logger.info(f"Session {session_slot}: Verwende gecachte Warm-Cookies ({len(json.loads(session_state).get('cookies', []))} Cookies)")
+                else:
+                    # Fallback: Noch nicht aufgewärmt → frischen Proxy ohne Cookies verwenden
+                    logger.warning(f"Session {session_slot}: Kein Warmup-Cache vorhanden. Verwende kalte Session.")
+                    proxy_url = self._prepare_rotating_proxy()
+                    session_state = None
                 
                 request.attempts += 1
                 logger.info(f"Verarbeite Request '{request.action}' (Versuch {request.attempts}) mit virtueller Session '{username}'")
@@ -331,6 +499,11 @@ class ScrapeQueueManager:
                     if request.future.done():
                         logger.info(f"Request {request.id} wurde während des Scrapings abgebrochen. Verwerfe Ergebnis.")
                         return
+                    
+                    # Cookies im Cache aktualisieren (Session bleibt frisch)
+                    if new_session and cache_entry:
+                        cache_entry["cookies"] = new_session
+                        cache_entry["last_used"] = datetime.utcnow()
                         
                     if not request.future.done():
                         request.future.set_result((data, method_used, username))
