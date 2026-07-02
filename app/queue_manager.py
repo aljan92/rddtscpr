@@ -813,7 +813,9 @@ class ScrapeQueueManager:
                 timeframe=params["timeframe"],
                 limit=params["limit"],
                 session_state=session_state,
-                proxy_url=proxy_url
+                proxy_url=proxy_url,
+                include_nsfw=params.get("include_nsfw", True),
+                filter_pinned=params.get("filter_pinned", True)
             )
         elif action == "comments":
             return await get_post_comments(
@@ -823,7 +825,8 @@ class ScrapeQueueManager:
                 include_replies=params["include_replies"],
                 load_more=params["load_more"],
                 session_state=session_state,
-                proxy_url=proxy_url
+                proxy_url=proxy_url,
+                filter_bots=params.get("filter_bots", True)
             )
         else:
             raise ValueError(f"Unbekannte Aktion: {action}")

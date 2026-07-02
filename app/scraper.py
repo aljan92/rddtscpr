@@ -95,7 +95,7 @@ def detect_media(data: dict) -> tuple[str, str]:
 # METOHDE 1: Der .json-Trick (Schnell & Ressourcenschonend)
 # =====================================================================
 
-async def scrape_subreddit_posts_json(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None) -> tuple[list, str]:
+async def scrape_subreddit_posts_json(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None, include_nsfw: bool = True, filter_pinned: bool = True) -> tuple[list, str]:
     """
     Holt Posts eines Subreddits über den .json-Trick.
     """
@@ -143,21 +143,34 @@ async def scrape_subreddit_posts_json(target: str, sort: str, timeframe: str, li
             if child.get("kind") != "t3":
                 continue
                 
-            # Stickied Ankündigungen und Chatrooms (discussion_type: CHAT) ausfiltern
-            if data.get("stickied") or data.get("discussion_type") == "CHAT":
+            # Stickied / Pinned Posts filtern
+            if filter_pinned and (data.get("stickied") or data.get("pinned")):
+                continue
+                
+            # NSFW Filter
+            if not include_nsfw and data.get("over_18"):
+                continue
+                
+            # Chatrooms ausfiltern
+            if data.get("discussion_type") == "CHAT":
                 continue
                 
             image_url, video_url = detect_media(data)
             
             posts.append({
+                "id": data.get("id"),
                 "title": data.get("title"),
                 "description": data.get("selftext", ""),
+                "author": data.get("author", "[deleted]"),
+                "created_utc": data.get("created_utc"),
+                "upvotes": data.get("ups", 0),
+                "upvote_ratio": data.get("upvote_ratio"),
+                "comment_count": data.get("num_comments", 0),
+                "is_pinned": bool(data.get("stickied") or data.get("pinned")),
+                "is_nsfw": bool(data.get("over_18")),
                 "image_url": image_url,
                 "video_url": video_url,
-                "post_url": f"https://www.reddit.com{data.get('permalink')}",
-                "upvotes": data.get("ups", 0),
-                "comment_count": data.get("num_comments", 0),
-                "author": data.get("author", "[deleted]")
+                "post_url": f"https://www.reddit.com{data.get('permalink')}"
             })
             
         new_session_state = update_session_state_with_cookies(session_state, client.cookies)
@@ -191,7 +204,7 @@ async def fetch_more_children(link_id: str, children_ids: list[str], sort: str, 
         logger.error(f"Fehler bei fetch_more_children: {e}")
     return []
 
-def extract_comments_recursive(children: list, include_replies: bool, is_root: bool = True, limit: int = None, more_nodes: list = None) -> list:
+def extract_comments_recursive(children: list, include_replies: bool, is_root: bool = True, limit: int = None, more_nodes: list = None, filter_bots: bool = True) -> list:
     """Extrahiert Kommentare und ggf. deren Replies rekursiv und flacht sie ab. Das Limit gilt nur für Hauptkommentare."""
     comments = []
     root_count = 0
@@ -217,13 +230,25 @@ def extract_comments_recursive(children: list, include_replies: bool, is_root: b
         if kind != "t1":
             continue
             
+        author = data.get("author", "[deleted]")
+        # Bot-Kommentare filtern (z.B. AutoModerator)
+        if filter_bots and author.lower() == "automoderator":
+            continue
+            
         parent_id = data.get("parent_id", "")
         is_reply = not parent_id.startswith("t3_")
         
         comments.append({
+            "id": data.get("id"),
+            "parent_id": parent_id,
+            "author": author,
             "comment_text": data.get("body", ""),
-            "upvotes": data.get("ups", 0),
-            "author": data.get("author", "[deleted]"),
+            "created_utc": data.get("created_utc"),
+            "score": data.get("score", 0),
+            "upvotes": data.get("score", 0),  # Abwärtskompatibel halten
+            "is_submitter": bool(data.get("is_submitter", False)),
+            "is_moderator": data.get("distinguished") == "moderator",
+            "is_controversial": data.get("controversiality", 0) == 1,
             "is_reply": is_reply
         })
         
@@ -234,12 +259,12 @@ def extract_comments_recursive(children: list, include_replies: bool, is_root: b
             replies_payload = data.get("replies")
             if isinstance(replies_payload, dict):
                 reply_children = replies_payload.get("data", {}).get("children", [])
-                sub_comments = extract_comments_recursive(reply_children, include_replies, is_root=False, limit=None, more_nodes=more_nodes)
+                sub_comments = extract_comments_recursive(reply_children, include_replies, is_root=False, limit=None, more_nodes=more_nodes, filter_bots=filter_bots)
                 comments.extend(sub_comments)
                 
     return comments
 
-async def scrape_post_comments_json(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, session_state: str = None, proxy_url: str = None) -> tuple[list, str]:
+async def scrape_post_comments_json(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, session_state: str = None, proxy_url: str = None, filter_bots: bool = True) -> tuple[list, str]:
     """
     Holt Kommentare eines Posts über den .json-Trick.
     """
@@ -278,7 +303,7 @@ async def scrape_post_comments_json(post_url: str, sort: str, limit: int, includ
         children = comments_payload.get("data", {}).get("children", [])
         
         more_nodes = []
-        comments = extract_comments_recursive(children, include_replies, is_root=True, limit=limit, more_nodes=more_nodes)
+        comments = extract_comments_recursive(children, include_replies, is_root=True, limit=limit, more_nodes=more_nodes, filter_bots=filter_bots)
         
         # Falls load_more aktiv ist, laden wir diese nach
         if include_replies and load_more and more_nodes:
@@ -306,7 +331,7 @@ async def scrape_post_comments_json(post_url: str, sort: str, limit: int, includ
                     if things:
                         new_more_nodes = []
                         # Die nachgeladenen things können wiederum more-Knoten enthalten
-                        new_comments = extract_comments_recursive(things, include_replies, is_root=False, limit=None, more_nodes=new_more_nodes)
+                        new_comments = extract_comments_recursive(things, include_replies, is_root=False, limit=None, more_nodes=new_more_nodes, filter_bots=filter_bots)
                         comments.extend(new_comments)
                         
                         if new_more_nodes:
@@ -412,7 +437,7 @@ async def get_page_json(page) -> dict:
         preview = content[:200].replace('\n', ' ')
         raise Exception(f"Ungültige JSON-Antwort von Reddit erhalten. Inhalt startet mit: '{preview}'")
 
-async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None) -> tuple[list, str]:
+async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None, include_nsfw: bool = True, filter_pinned: bool = True) -> tuple[list, str]:
     """
     Holt Posts eines Subreddits über Playwright, indem die .json-URL im Browser geladen wird.
     """
@@ -446,21 +471,34 @@ async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: s
                 if child.get("kind") != "t3":
                     continue
                     
-                # Stickied Ankündigungen und Chatrooms (discussion_type: CHAT) ausfiltern
-                if data.get("stickied") or data.get("discussion_type") == "CHAT":
+                # Stickied / Pinned Posts filtern
+                if filter_pinned and (data.get("stickied") or data.get("pinned")):
+                    continue
+                    
+                # NSFW Filter
+                if not include_nsfw and data.get("over_18"):
+                    continue
+                    
+                # Chatrooms ausfiltern
+                if data.get("discussion_type") == "CHAT":
                     continue
                     
                 image_url, video_url = detect_media(data)
                 
                 posts.append({
+                    "id": data.get("id"),
                     "title": data.get("title"),
                     "description": data.get("selftext", ""),
+                    "author": data.get("author", "[deleted]"),
+                    "created_utc": data.get("created_utc"),
+                    "upvotes": data.get("ups", 0),
+                    "upvote_ratio": data.get("upvote_ratio"),
+                    "comment_count": data.get("num_comments", 0),
+                    "is_pinned": bool(data.get("stickied") or data.get("pinned")),
+                    "is_nsfw": bool(data.get("over_18")),
                     "image_url": image_url,
                     "video_url": video_url,
-                    "post_url": f"https://www.reddit.com{data.get('permalink')}",
-                    "upvotes": data.get("ups", 0),
-                    "comment_count": data.get("num_comments", 0),
-                    "author": data.get("author", "[deleted]")
+                    "post_url": f"https://www.reddit.com{data.get('permalink')}"
                 })
                 
             if not posts:
@@ -478,7 +516,7 @@ async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: s
             await context.close()
             await browser.close()
 
-async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, session_state: str = None, proxy_url: str = None) -> tuple[list, str]:
+async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, session_state: str = None, proxy_url: str = None, filter_bots: bool = True) -> tuple[list, str]:
     """
     Holt Kommentare eines Posts über Playwright, indem die .json-URL im Browser geladen wird.
     """
@@ -505,7 +543,7 @@ async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, 
             children = comments_payload.get("data", {}).get("children", [])
             
             more_nodes = []
-            comments = extract_comments_recursive(children, include_replies, is_root=True, limit=limit, more_nodes=more_nodes)
+            comments = extract_comments_recursive(children, include_replies, is_root=True, limit=limit, more_nodes=more_nodes, filter_bots=filter_bots)
             
             if include_replies and load_more and more_nodes:
                 post_id_match = re.search(r'/comments/([a-z0-9]+)/', post_url)
@@ -529,7 +567,7 @@ async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, 
                         
                         if things:
                             new_more_nodes = []
-                            new_comments = extract_comments_recursive(things, include_replies, is_root=False, limit=None, more_nodes=new_more_nodes)
+                            new_comments = extract_comments_recursive(things, include_replies, is_root=False, limit=None, more_nodes=new_more_nodes, filter_bots=filter_bots)
                             comments.extend(new_comments)
                             
                             if new_more_nodes:
@@ -547,13 +585,13 @@ async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, 
 # INTEGRATION & FAILLBACK ROUTING
 # =====================================================================
 
-async def get_subreddit_posts(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None) -> tuple[list, str, str]:
+async def get_subreddit_posts(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None, include_nsfw: bool = True, filter_pinned: bool = True) -> tuple[list, str, str]:
     """
     Versucht zuerst die JSON-Methode. Schlägt diese fehl, wird Playwright aufgerufen.
     Gibt (posts_list, "json"|"playwright", updated_session_state) zurück.
     """
     try:
-        posts, new_session = await scrape_subreddit_posts_json(target, sort, timeframe, limit, session_state, proxy_url)
+        posts, new_session = await scrape_subreddit_posts_json(target, sort, timeframe, limit, session_state, proxy_url, include_nsfw, filter_pinned)
         logger.info("Subreddit-Posts erfolgreich via JSON-Trick geladen.")
         return posts, "json", new_session
     except ValueError as ve:
@@ -569,14 +607,14 @@ async def get_subreddit_posts(target: str, sort: str, timeframe: str, limit: int
             # Mit Account versuchen wir den Playwright Fallback (z.B. falls Cookie-Session abgelaufen)
             logger.warning(f"NSFWRequiredException mit Account: {nsfw_err}. Starte Playwright Fallback...")
             try:
-                posts, new_session = await scrape_subreddit_playwright_fallback(target, sort, timeframe, limit, session_state, proxy_url)
+                posts, new_session = await scrape_subreddit_playwright_fallback(target, sort, timeframe, limit, session_state, proxy_url, include_nsfw, filter_pinned)
                 return posts, "playwright", new_session
             except Exception as pe:
                 raise pe
     except Exception as e:
         logger.warning(f"JSON-Trick für Subreddit fehlgeschlagen: {e}. Starte Playwright Fallback...")
         try:
-            posts, new_session = await scrape_subreddit_playwright_fallback(target, sort, timeframe, limit, session_state, proxy_url)
+            posts, new_session = await scrape_subreddit_playwright_fallback(target, sort, timeframe, limit, session_state, proxy_url, include_nsfw, filter_pinned)
             return posts, "playwright", new_session
         except ValueError as ve:
             raise
@@ -584,17 +622,17 @@ async def get_subreddit_posts(target: str, sort: str, timeframe: str, limit: int
             logger.error(f"Playwright Fallback ebenfalls fehlgeschlagen: {pe}")
             raise pe
 
-async def scrape_subreddit_playwright_fallback(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None) -> tuple[list, str]:
+async def scrape_subreddit_playwright_fallback(target: str, sort: str, timeframe: str, limit: int, session_state: str = None, proxy_url: str = None, include_nsfw: bool = True, filter_pinned: bool = True) -> tuple[list, str]:
     # Hilfsfunktion zur Entkopplung
-    return await scrape_subreddit_posts_playwright(target, sort, timeframe, limit, session_state, proxy_url)
+    return await scrape_subreddit_posts_playwright(target, sort, timeframe, limit, session_state, proxy_url, include_nsfw, filter_pinned)
 
-async def get_post_comments(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, session_state: str = None, proxy_url: str = None) -> tuple[list, str, str]:
+async def get_post_comments(post_url: str, sort: str, limit: int, include_replies: bool = False, load_more: bool = False, session_state: str = None, proxy_url: str = None, filter_bots: bool = True) -> tuple[list, str, str]:
     """
     Versucht zuerst die JSON-Methode. Schlägt diese fehl, wird Playwright aufgerufen.
     Gibt (comments_list, "json"|"playwright", updated_session_state) zurück.
     """
     try:
-        comments, new_session = await scrape_post_comments_json(post_url, sort, limit, include_replies, load_more, session_state, proxy_url)
+        comments, new_session = await scrape_post_comments_json(post_url, sort, limit, include_replies, load_more, session_state, proxy_url, filter_bots)
         logger.info("Kommentare erfolgreich via JSON-Trick geladen.")
         return comments, "json", new_session
     except ValueError as ve:
@@ -609,14 +647,14 @@ async def get_post_comments(post_url: str, sort: str, limit: int, include_replie
             # Mit Account versuchen wir den Playwright Fallback
             logger.warning(f"NSFWRequiredException mit Account: {nsfw_err}. Starte Playwright Fallback...")
             try:
-                comments, new_session = await scrape_post_comments_playwright(post_url, sort, limit, include_replies, load_more, session_state, proxy_url)
+                comments, new_session = await scrape_post_comments_playwright(post_url, sort, limit, include_replies, load_more, session_state, proxy_url, filter_bots)
                 return comments, "playwright", new_session
             except Exception as pe:
                 raise pe
     except Exception as e:
         logger.warning(f"JSON-Trick für Kommentare fehlgeschlagen: {e}. Starte Playwright Fallback...")
         try:
-            comments, new_session = await scrape_post_comments_playwright(post_url, sort, limit, include_replies, load_more, session_state, proxy_url)
+            comments, new_session = await scrape_post_comments_playwright(post_url, sort, limit, include_replies, load_more, session_state, proxy_url, filter_bots)
             return comments, "playwright", new_session
         except ValueError as ve:
             raise

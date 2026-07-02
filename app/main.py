@@ -147,7 +147,9 @@ async def api_subreddit_posts(
     target: str,
     sort: str = "hot",
     timeframe: str = "day",
-    limit: int = 10
+    limit: int = 10,
+    include_nsfw: bool = True,
+    filter_pinned: bool = True
 ):
     """
     Extrahiert Posts aus einem bestimmten Subreddit.
@@ -183,7 +185,9 @@ async def api_subreddit_posts(
                 "target": target,
                 "sort": sort,
                 "timeframe": timeframe,
-                "limit": limit
+                "limit": limit,
+                "include_nsfw": include_nsfw,
+                "filter_pinned": filter_pinned
             },
             is_playground=is_playground
         )
@@ -317,7 +321,8 @@ async def api_post_comments(
     sort: str = "confidence",
     limit: int = 10,
     include_replies: bool = False,
-    load_more: bool = False
+    load_more: bool = False,
+    filter_bots: bool = True
 ):
     """
     Extrahiert Kommentare aus einem bestimmten Reddit-Post.
@@ -361,7 +366,8 @@ async def api_post_comments(
                 "sort": sort,
                 "limit": limit,
                 "include_replies": include_replies,
-                "load_more": load_more
+                "load_more": load_more,
+                "filter_bots": filter_bots
             },
             is_playground=is_playground
         )
