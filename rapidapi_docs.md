@@ -4,17 +4,17 @@ Welcome to the **Reddit Scraper & Insights API**! This high-performance API is d
 
 ---
 
-## 🌟 Key Features
+##  Key Features
 
 * **High Reliability:** Optimized to provide consistent and uninterrupted data access.
 * **Deep Nested Comments (`include_replies`):** Retrieve the full conversation tree of a post, flattening replies with clear relationship markers (`is_reply: true`).
 * **On-Demand Deep Scrape (`load_more`):** Automatically fetches deeper hidden comments ("Load more replies") for comprehensive data gathering (restricted to **Pro** & **Ultra** subscription tiers).
 * **NSFW Content Access:** Fully supports retrieving content from age-restricted subreddits.
-* **Modern Clean Output:** JSON structures formatted for immediate ingestion by databases, data pipelines, or LLMs. Now with advanced content metrics (timestamps, upvote ratios, OP markers, controversial flags, and bot filtering).
+* **Modern Clean Output:** JSON structures formatted for immediate ingestion by databases, data pipelines, or LLMs. Now with advanced content metrics (timestamps, upvote ratios, OP/mod markers, controversial flags, and automated bot filtering).
 
 ---
 
-## 🛠️ API Endpoint Reference
+##  API Endpoint Reference
 
 ### 1. Get Subreddit Posts
 Extracts a list of posts from a specific Subreddit or custom feed URL.
@@ -30,7 +30,7 @@ Extracts a list of posts from a specific Subreddit or custom feed URL.
 
 #### Example Request:
 ```http
-GET /v1/subreddit-posts?target=subreddit_name&sort=hot&limit=1&include_nsfw=false HTTP/1.1
+GET /v1/subreddit-posts?target=string&sort=string&limit=0&include_nsfw=false&filter_pinned=true HTTP/1.1
 Host: api-provider.rapidapi.com
 ```
 
@@ -38,27 +38,27 @@ Host: api-provider.rapidapi.com
 ```json
 {
   "meta": {
-    "target_subreddit": "subreddit_name",
-    "scraped_url": "https://www.reddit.com/r/subreddit_name/hot/",
-    "post_count": 1,
-    "method_used": "standard",
-    "execution_time_ms": 620
+    "target_subreddit": "string",
+    "scraped_url": "string",
+    "post_count": 0,
+    "method_used": "string",
+    "execution_time_ms": 0
   },
   "data": [
     {
-      "id": "1ulb60k",
-      "title": "Example Post Title",
-      "description": "Optional body text of the post...",
-      "author": "redditor_username",
-      "created_utc": 1782976631.0,
-      "upvotes": 1250,
-      "upvote_ratio": 0.86,
-      "comment_count": 85,
+      "id": "string",
+      "title": "string",
+      "description": "string",
+      "author": "string",
+      "created_utc": 0.0,
+      "upvotes": 0,
+      "upvote_ratio": 0.0,
+      "comment_count": 0,
       "is_pinned": false,
       "is_nsfw": false,
-      "image_url": "https://preview.redd.it/example.jpg",
-      "video_url": null,
-      "post_url": "https://www.reddit.com/r/subreddit_name/comments/1ulb60k/example_post_title/"
+      "image_url": "string",
+      "video_url": "string",
+      "post_url": "string"
     }
   ]
 }
@@ -80,7 +80,7 @@ Extracts deeply nested comments and reply trees from a specific Reddit post URL.
 
 #### Example Request:
 ```http
-GET /v1/post-comments?post_url=https://www.reddit.com/r/subreddit_name/comments/12345/example_post/&sort=top&limit=5&include_replies=true&filter_bots=true HTTP/1.1
+GET /v1/post-comments?post_url=string&sort=string&limit=0&include_replies=false&filter_bots=true HTTP/1.1
 Host: api-provider.rapidapi.com
 ```
 
@@ -88,39 +88,26 @@ Host: api-provider.rapidapi.com
 ```json
 {
   "meta": {
-    "scraped_url": "https://www.reddit.com/r/subreddit_name/comments/12345/example_post/?sort=top",
-    "comment_count": 2,
-    "include_replies": true,
+    "scraped_url": "string",
+    "comment_count": 0,
+    "include_replies": false,
     "load_more": false,
-    "method_used": "standard",
-    "execution_time_ms": 1120
+    "method_used": "string",
+    "execution_time_ms": 0
   },
   "data": [
     {
-      "id": "ov2p2fc",
-      "parent_id": "t3_12345",
-      "author": "author_username",
-      "comment_text": "This is a root-level comment.",
-      "created_utc": 1782977464.0,
-      "score": 420,
-      "upvotes": 420,
+      "id": "string",
+      "parent_id": "string",
+      "author": "string",
+      "comment_text": "string",
+      "created_utc": 0.0,
+      "score": 0,
+      "upvotes": 0,
       "is_submitter": false,
       "is_moderator": false,
       "is_controversial": false,
       "is_reply": false
-    },
-    {
-      "id": "ov2p9xy",
-      "parent_id": "t1_ov2p2fc",
-      "author": "replying_user",
-      "comment_text": "This is a direct reply to the root-level comment above.",
-      "created_utc": 1782977500.0,
-      "score": 35,
-      "upvotes": 35,
-      "is_submitter": true,
-      "is_moderator": false,
-      "is_controversial": false,
-      "is_reply": true
     }
   ]
 }
@@ -128,7 +115,7 @@ Host: api-provider.rapidapi.com
 
 ---
 
-## 🚨 Error Handling
+##  Error Handling
 
 The API returns standard HTTP status codes. In case of validation issues or restricted plan features, detailed JSON error messages are returned:
 

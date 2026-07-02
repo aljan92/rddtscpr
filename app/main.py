@@ -4,7 +4,7 @@ import time
 import logging
 import asyncio
 from typing import Optional
-from fastapi import FastAPI, Depends, HTTPException, status, Request, Form, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Form, BackgroundTasks, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
@@ -144,12 +144,12 @@ async def root_redirect():
 @app.get("/v1/subreddit-posts")
 async def api_subreddit_posts(
     request: Request,
-    target: str,
-    sort: str = "hot",
-    timeframe: str = "day",
-    limit: int = 10,
-    include_nsfw: bool = True,
-    filter_pinned: bool = True
+    target: str = Query(..., description="The subreddit name (e.g. 'beziehungen') or full URL", example="beziehungen"),
+    sort: str = Query("hot", description="Sort order: hot, new, top, rising", example="hot"),
+    timeframe: str = Query("day", description="Timeframe for top sort: hour, day, week, month, year, all", example="day"),
+    limit: int = Query(5, description="Number of posts to return (1-100)", example=5),
+    include_nsfw: bool = Query(True, description="Whether to include NSFW posts", example=True),
+    filter_pinned: bool = Query(True, description="Whether to filter out pinned/stickied posts", example=True)
 ):
     """
     Extrahiert Posts aus einem bestimmten Subreddit.
@@ -317,12 +317,12 @@ async def api_subreddit_posts(
 @app.get("/v1/post-comments")
 async def api_post_comments(
     request: Request,
-    post_url: str,
-    sort: str = "confidence",
-    limit: int = 10,
-    include_replies: bool = False,
-    load_more: bool = False,
-    filter_bots: bool = True
+    post_url: str = Query(..., description="The full URL of the Reddit post", example="https://www.reddit.com/r/beziehungen/comments/1u8hnzu/bida_wenn_ich_meiner_partnerin_und_ihren_kindern/"),
+    sort: str = Query("confidence", description="Sort order: confidence, top, new, controversial, old, qa", example="confidence"),
+    limit: int = Query(10, description="Number of root comments to return (1-100)", example=10),
+    include_replies: bool = Query(False, description="Whether to include comment replies recursively", example=False),
+    load_more: bool = Query(False, description="Whether to fetch deeper replies (Pro/Ultra plans)", example=False),
+    filter_bots: bool = Query(True, description="Whether to filter out automated bot comments", example=True)
 ):
     """
     Extrahiert Kommentare aus einem bestimmten Reddit-Post.
