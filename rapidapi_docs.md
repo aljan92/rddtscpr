@@ -8,7 +8,7 @@ Welcome to the **Reddit Scraper & Insights API**! This high-performance API is d
 
 * **High Reliability:** Optimized to provide consistent and uninterrupted data access.
 * **Deep Nested Comments (`include_replies`):** Retrieve the full conversation tree of a post, flattening replies with clear relationship markers (`is_reply: true`).
-* **On-Demand Deep Scrape (`load_more`):** Automatically fetches deeper hidden comments ("Load more replies") for comprehensive data gathering (restricted to **Pro** & **Ultra** subscription tiers).
+* **On-Demand Deep Scrape (`load_more`):** Automatically fetches deeper hidden comments ("Load more replies") for comprehensive data gathering (restricted to **Pro**, **Mega** & **Ultra** subscription tiers).
 * **NSFW Content Access:** Fully supports retrieving content from age-restricted subreddits.
 * **Modern Clean Output:** JSON structures formatted for immediate ingestion by databases, data pipelines, or LLMs. Now with advanced content metrics (timestamps, upvote ratios, OP/mod markers, controversial flags, and automated bot filtering).
 
@@ -75,7 +75,7 @@ Extracts deeply nested comments and reply trees from a specific Reddit post URL.
   * `sort` (string, Optional): Comment sorting. Allowed: `confidence` (default - "Best"), `top`, `new`, `controversial`, `old`, `qa`.
   * `limit` (integer, Optional): Maximum number of **root-level (main) comments** to extract. Range: `1` to `100`. Default: `10`.
   * `include_replies` (boolean, Optional): If `true`, returns replies to the comments. Default: `false`.
-  * `load_more` (boolean, Optional): If `true`, recursively queries to fetch hidden comment branches (corresponds to loading deeper replies). Requires `include_replies=true` and a **Pro/Ultra** plan. Default: `false`.
+  * `load_more` (boolean, Optional): If `true`, recursively queries to fetch hidden comment branches (corresponds to loading deeper replies). Requires `include_replies=true` and a **Pro/Mega/Ultra** plan. Default: `false`.
   * `filter_bots` (boolean, Optional): If `true`, automatically filters out system/automated comments (e.g. `AutoModerator`). Default: `true`.
 
 #### Example Request:
@@ -126,7 +126,7 @@ The API returns standard HTTP status codes. In case of validation issues or rest
 #### Subscription Restriction Response (403 Forbidden):
 ```json
 {
-  "detail": "The 'load_more' feature is restricted to Pro and Ultra plans. Please upgrade your subscription."
+  "detail": "The 'load_more' feature is restricted to Pro, Mega, and Ultra plans. Please upgrade your subscription."
 }
 ```
 

@@ -93,8 +93,8 @@ def check_rapidapi_access(request: Request):
         sub_lower = sub.lower()
         
         is_sub_valid = False
-        # Prüfen, ob das Wort basic, pro oder ultra im String enthalten ist
-        for plan_name in ["basic", "pro", "ultra"]:
+        # Prüfen, ob das Wort basic, pro, ultra oder mega im String enthalten ist
+        for plan_name in ["basic", "pro", "ultra", "mega"]:
             if plan_name in sub_lower:
                 is_sub_valid = True
                 break
@@ -337,13 +337,13 @@ async def api_post_comments(
             
         sub_str = (subscription or "").lower()
         
-        # Bestimmen, ob wir Pro oder Ultra haben
-        is_premium = ("pro" in sub_str) or ("ultra" in sub_str)
+        # Bestimmen, ob wir Pro, Mega oder Ultra haben
+        is_premium = ("pro" in sub_str) or ("ultra" in sub_str) or ("mega" in sub_str)
         
         if not is_premium:
             raise HTTPException(
                 status_code=403,
-                detail="The 'load_more' feature is restricted to Pro and Ultra plans. Please upgrade your subscription."
+                detail="The 'load_more' feature is restricted to Pro, Mega, and Ultra plans. Please upgrade your subscription."
             )
 
     if sort not in ["confidence", "top", "new", "controversial", "old", "qa"]:
