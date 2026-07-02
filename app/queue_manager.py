@@ -236,8 +236,10 @@ class ScrapeQueueManager:
                     free_slot = None
                     for slot in range(1, self.max_accountless_sessions + 1):
                         if slot not in self.busy_session_ids:
-                            free_slot = slot
-                            break
+                            cache_entry = self.session_cache.get(slot)
+                            if cache_entry and cache_entry.get("status") == "warm":
+                                free_slot = slot
+                                break
                     
                     if free_slot is not None:
                         assigned_session_slot = free_slot
@@ -521,6 +523,14 @@ class ScrapeQueueManager:
                     
                 except Exception as scrape_error:
                     logger.warning(f"Fehler beim Scraping mit virtueller '{username}': {scrape_error}")
+                    
+                    # Wenn ein Fehler auftritt, markieren wir die Session als ungültig/dirty
+                    # und erzwingen ein Zurücksetzen der Proxy-IP und der Cookies.
+                    if cache_entry:
+                        logger.warning(f"Session {session_slot} hat Fehler gemeldet. Invalidate Cache & starte Re-Warmup (neue IP + Cookies)...")
+                        cache_entry["status"] = "dirty"
+                        cache_entry["proxy_url"] = None  # Erzwingt neue IP beim Aufwärmen
+                        asyncio.create_task(self._warmup_session(session_slot))
                     
                     if request.attempts < 4:
                         # Nach 3 Fehlversuchen auf echten Reddit-Account eskalieren
