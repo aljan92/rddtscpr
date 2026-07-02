@@ -118,14 +118,18 @@ class ScrapeQueueManager:
                         
                     # Rotating proxy URL laden
                     proxy_setting = db.query(SystemSetting).filter(SystemSetting.key == "rotating_proxy_url").first()
-                    if proxy_setting:
+                    if proxy_setting and proxy_setting.value and proxy_setting.value.strip() != "":
                         self.rotating_proxy_url = proxy_setting.value
                         logger.info(f"Rotating-Proxy-URL aus DB geladen: {self.rotating_proxy_url}")
                     else:
-                        proxy_setting = SystemSetting(key="rotating_proxy_url", value=self.rotating_proxy_url)
-                        db.add(proxy_setting)
+                        self.rotating_proxy_url = "http://janssenale0:njfUKvnXayQxogofmpfa@core-residential.evomi.com:1000"
+                        if proxy_setting:
+                            proxy_setting.value = self.rotating_proxy_url
+                        else:
+                            proxy_setting = SystemSetting(key="rotating_proxy_url", value=self.rotating_proxy_url)
+                            db.add(proxy_setting)
                         db.commit()
-                        logger.info(f"Standard-Rotating-Proxy-URL in DB angelegt: {self.rotating_proxy_url}")
+                        logger.info(f"Standard-Rotating-Proxy-URL in DB gesetzt: {self.rotating_proxy_url}")
             except Exception as e:
                 logger.error(f"Fehler beim Laden der Einstellungen aus DB: {e}")
 
