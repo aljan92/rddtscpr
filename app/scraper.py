@@ -431,6 +431,15 @@ async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: s
         browser, context, page = await launch_browser(p, session_state, proxy_url)
         try:
             # Zu Reddit navigieren
+            if not session_state or session_state.strip() == "" or session_state.strip() == "{}":
+                html_url = clean_url(base_url)
+                logger.info(f"Playwright: Navigiere zuerst auf HTML-URL {html_url} für Guest-Cookies")
+                try:
+                    await page.goto(html_url, wait_until="domcontentloaded", timeout=20000)
+                    await page.wait_for_timeout(3000)
+                except Exception as html_err:
+                    logger.warning(f"Playwright: Fehler beim Laden der HTML-URL: {html_err}")
+
             await page.goto(url, wait_until="domcontentloaded", timeout=20000)
             await page.wait_for_timeout(2000)
             
@@ -491,6 +500,15 @@ async def scrape_post_comments_playwright(post_url: str, sort: str, limit: int, 
     async with async_playwright() as p:
         browser, context, page = await launch_browser(p, session_state, proxy_url)
         try:
+            if not session_state or session_state.strip() == "" or session_state.strip() == "{}":
+                html_url = clean_post_url
+                logger.info(f"Playwright: Navigiere zuerst auf HTML-URL {html_url} für Guest-Cookies")
+                try:
+                    await page.goto(html_url, wait_until="domcontentloaded", timeout=20000)
+                    await page.wait_for_timeout(3000)
+                except Exception as html_err:
+                    logger.warning(f"Playwright: Fehler beim Laden der HTML-URL: {html_err}")
+
             await page.goto(url, wait_until="domcontentloaded", timeout=20000)
             await page.wait_for_timeout(2000)
             
