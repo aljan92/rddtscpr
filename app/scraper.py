@@ -103,7 +103,10 @@ async def scrape_subreddit_posts_json(target: str, sort: str, timeframe: str, li
     json_url = f"{base_url.rstrip('/')}.json"
     
     # Query Parameter
-    params = {"limit": limit}
+    # Erhöhe das Limit für Reddit, damit nach dem Filtern von Pinned/NSFW-Posts
+    # immer noch genügend Posts vorhanden sind, um das gewünschte Limit zu erfüllen.
+    reddit_limit = min(max(limit + 5, 25), 100)
+    params = {"limit": reddit_limit}
     if sort == "top" and timeframe:
         params["t"] = timeframe
         
@@ -445,7 +448,10 @@ async def scrape_subreddit_posts_playwright(target: str, sort: str, timeframe: s
     url_json = f"{base_url.rstrip('/')}.json"
     
     # Query Parameter
-    params = f"limit={limit}"
+    # Erhöhe das Limit für Reddit, damit nach dem Filtern von Pinned/NSFW-Posts
+    # immer noch genügend Posts vorhanden sind, um das gewünschte Limit zu erfüllen.
+    reddit_limit = min(max(limit + 5, 25), 100)
+    params = f"limit={reddit_limit}"
     if sort == "top" and timeframe:
         params += f"&t={timeframe}"
     url = f"{url_json}?{params}"
