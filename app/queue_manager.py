@@ -510,6 +510,12 @@ class ScrapeQueueManager:
                     if not request.future.done():
                         request.future.set_result((data, method_used, username))
                         
+                except ValueError as val_error:
+                    logger.warning(f"Client-Fehler bei virtueller '{username}': {val_error}")
+                    if not request.future.done():
+                        request.future.set_exception(val_error)
+                    return
+                    
                 except NSFWRequiredException as nsfw_error:
                     logger.warning(f"NSFW/Altersgate-Sperre erkannt für virtuelle '{username}': {nsfw_error}. Re-enqueuing mit NSFW Account-Zwang...")
                     request.requires_nsfw_account = True
@@ -597,6 +603,12 @@ class ScrapeQueueManager:
                     if not request.future.done():
                         request.future.set_result((data, method_used, account.username))
                         
+                except ValueError as val_error:
+                    logger.warning(f"Client-Fehler bei Account '{account.username}': {val_error}")
+                    if not request.future.done():
+                        request.future.set_exception(val_error)
+                    return
+                    
                 except NSFWRequiredException as nsfw_error:
                     logger.warning(f"NSFW/Altersgate-Sperre erkannt für Account '{account.username}': {nsfw_error}. Re-enqueuing mit NSFW Account-Zwang...")
                     request.requires_nsfw_account = True
