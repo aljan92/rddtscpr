@@ -97,6 +97,11 @@
             </div>
         </div>
         <div class="flex items-center space-x-4">
+            <!-- Evomi Bandwidth Badge -->
+            <div id="evomi-bandwidth-badge" class="hidden items-center space-x-1.5 text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
+                <i data-lucide="wifi" class="w-3.5 h-3.5"></i>
+                <span id="evomi-bandwidth-text">Evomi: -- GB</span>
+            </div>
             <a href="/admin/dashboard" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
                 <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
                 <span>Dashboard</span>
@@ -217,6 +222,22 @@
                     </div>
                 </div>
 
+                <!-- Evomi API-Key für Bandbreitenabfrage -->
+                <div class="border-t border-reddit-border/30 pt-6 space-y-4">
+                    <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
+                        <i data-lucide="wifi" class="w-4 h-4 text-emerald-400"></i>
+                        <span>Evomi API-Key (für Bandbreitenabfrage)</span>
+                    </h3>
+                    <p class="text-xs text-slate-500">
+                        Dein öffentlicher Evomi API-Key, um das verbleibende Datenvolumen (Residential IPs) direkt oben im Dashboard anzuzeigen.
+                    </p>
+                    <div class="space-y-3">
+                        <input type="text" name="evomi_api_key" id="evomi_api_key" value="{{ settings.get('evomi_api_key', '') }}"
+                               placeholder="1a4b2b41-3515-4938-a0a9-a7493b550039"
+                               class="w-full bg-reddit-dark/50 border border-reddit-border rounded-xl px-4 py-3 text-white placeholder-slate-650 focus:outline-none focus:border-reddit-orange focus:ring-1 focus:ring-reddit-orange transition-all duration-200 font-mono text-xs">
+                    </div>
+                </div>
+
                 <!-- RapidAPI Playground Credentials -->
                 <div class="border-t border-reddit-border/30 pt-6 space-y-4">
                     <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
@@ -313,6 +334,28 @@
     <!-- Interactive script for dynamic updates -->
     <script>
         lucide.createIcons();
+
+        // Evomi Bandbreite abfragen
+        fetch('/admin/evomi-balance')
+            .then(res => res.json())
+            .then(data => {
+                const badge = document.getElementById('evomi-bandwidth-badge');
+                const text = document.getElementById('evomi-bandwidth-text');
+                if (data.status === 'success' && data.remaining !== null) {
+                    text.textContent = `Evomi: ${data.remaining} GB`;
+                    badge.classList.remove('hidden');
+                    badge.classList.add('flex');
+                    lucide.createIcons();
+                } else if (data.status === 'unauthorized') {
+                    text.textContent = 'Evomi API: 401';
+                    badge.classList.remove('bg-emerald-500/10', 'text-emerald-400', 'border-emerald-500/20');
+                    badge.classList.add('bg-red-500/10', 'text-red-400', 'border-red-500/20');
+                    badge.classList.remove('hidden');
+                    badge.classList.add('flex');
+                    lucide.createIcons();
+                }
+            })
+            .catch(err => console.error('Fehler bei Evomi Bandbreiten-Abfrage:', err));
 
         // Zeige/Verberge Warnung bei Klick auf Sandbox-Modus Toggle
         const toggle = document.getElementById('sandbox_mode');

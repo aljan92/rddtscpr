@@ -46,10 +46,13 @@ def load_settings() -> dict:
     if os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                if "evomi_api_key" not in data:
+                    data["evomi_api_key"] = ""
+                return data
         except Exception:
             pass
-    return {"rapidapi_proxy_secret": "", "sandbox_mode": True}
+    return {"rapidapi_proxy_secret": "", "sandbox_mode": True, "evomi_api_key": ""}
 
 def save_settings(settings: dict):
     os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
@@ -1144,6 +1147,7 @@ async def admin_settings_post(
     rapidapi_key: str = Form(None),
     rapidapi_host: str = Form(None),
     rotating_proxy_url: str = Form(None),
+    evomi_api_key: str = Form(None),
     username: str = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
@@ -1152,7 +1156,8 @@ async def admin_settings_post(
         "rapidapi_proxy_secret": (rapidapi_proxy_secret or "").strip(),
         "sandbox_mode": sandbox_mode,
         "rapidapi_key": (rapidapi_key or "").strip(),
-        "rapidapi_host": (rapidapi_host or "").strip()
+        "rapidapi_host": (rapidapi_host or "").strip(),
+        "evomi_api_key": (evomi_api_key or "").strip()
     }
     save_settings(settings)
     
@@ -1352,5 +1357,69 @@ async def admin_edit_account(
     except Exception as e:
         db.rollback()
         return RedirectResponse(url=f"/admin/dashboard?error=Fehler+beim+Aktualisieren+von+{acc.username}:+{str(e)}", status_code=303)
+
+
+@app.get("/admin/evomi-balance")
+async def get_evomi_balance_endpoint(
+    username: str = Depends(verify_admin)
+):
+    import httpx
+    settings = load_settings()
+    api_key = settings.get("evomi_api_key", "").strip()
+    if not api_key:
+        return {"status": "not_configured", "remaining": None}
+        
+    try:
+        url = "https://api.evomi.com/public/proxy"
+        headers = {"x-apikey": api_key}
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            res = await client.get(url, headers=headers)
+            
+        if res.status_code == 401:
+            return {"status": "unauthorized", "remaining": None}
+        elif res.status_code != 200:
+            return {"status": "error", "remaining": None}
+            
+        data = res.json()
+        traffic_data = data.get("data", [])
+        remaining_gb = None
+        
+        if isinstance(traffic_data, list):
+            for item in traffic_data:
+                if not isinstance(item, dict):
+                     continue
+                prod = str(item.get("product", "")).lower()
+                if prod in ["rpc", "rp", "core_residential", "residential"]:
+                    traffic = item.get("traffic", {})
+                    if isinstance(traffic, dict):
+                        rem_bytes = traffic.get("remaining") or traffic.get("left")
+                    else:
+                        rem_bytes = item.get("remaining") or item.get("traffic_remaining")
+                    
+                    if rem_bytes is not None:
+                        try:
+                            remaining_gb = round(float(rem_bytes) / (1024**3), 2)
+                        except:
+                            pass
+                    break
+        elif isinstance(traffic_data, dict):
+            for prod_key in ["rpc", "rp", "core_residential", "residential"]:
+                if prod_key in traffic_data:
+                    item = traffic_data[prod_key]
+                    if isinstance(item, dict):
+                        rem_bytes = item.get("remaining") or item.get("traffic_remaining") or item.get("left")
+                        if rem_bytes is not None:
+                            try:
+                                remaining_gb = round(float(rem_bytes) / (1024**3), 2)
+                            except:
+                                pass
+                        break
+                        
+        if remaining_gb is not None:
+            return {"status": "success", "remaining": remaining_gb}
+        return {"status": "success", "remaining": None}
+    except Exception as e:
+        logger.error(f"Fehler bei Evomi Bandbreiten-Abfrage: {e}")
+        return {"status": "error", "remaining": None}
 
 
