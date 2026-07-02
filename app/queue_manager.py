@@ -234,12 +234,17 @@ class ScrapeQueueManager:
                 else:
                     # Standard-Anfrage: Bevorzuge in-memory Session-Slots
                     free_slot = None
+                    candidates = []
                     for slot in range(1, self.max_accountless_sessions + 1):
                         if slot not in self.busy_session_ids:
                             cache_entry = self.session_cache.get(slot)
                             if cache_entry and cache_entry.get("status") == "warm":
-                                free_slot = slot
-                                break
+                                candidates.append((slot, cache_entry.get("last_used") or datetime.min))
+                    
+                    if candidates:
+                        # Sortiere nach last_used aufsteigend (älteste zuerst)
+                        candidates.sort(key=lambda x: x[1])
+                        free_slot = candidates[0][0]
                     
                     if free_slot is not None:
                         assigned_session_slot = free_slot
