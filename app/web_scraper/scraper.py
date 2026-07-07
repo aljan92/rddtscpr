@@ -129,7 +129,18 @@ def is_bot_blocked(status_code: int, title: str, html_content: str) -> bool:
         return True
         
     html_lower = html_content.lower()
-    if any(keyword in html_lower for keyword in ["verify you are human", "cloudflare-turnstile", "g-recaptcha", "hcaptcha", "enable javascript and cookies"]):
+    
+    # Check for specific bot challenge markers to avoid false positives on normal article text or scripts config
+    block_markers = [
+        "verify you are human",
+        "enable javascript and cookies",
+        "class=\"h-captcha\"",
+        "class=\"g-recaptcha\"",
+        "class=\"cf-turnstile\"",
+        "hcaptcha.com/getcaptcha",
+        "challenges.cloudflare.com"
+    ]
+    if any(marker in html_lower for marker in block_markers):
         return True
         
     return False
