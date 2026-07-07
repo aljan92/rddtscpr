@@ -38,8 +38,10 @@ def load_settings() -> dict:
 
 def save_settings(settings: dict):
     os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+    current = load_settings()
+    current.update(settings)
     with open(SETTINGS_FILE, "w") as f:
-        json.dump(settings, f, indent=2)
+        json.dump(current, f, indent=2)
 
 def is_admin_request(request: Request) -> bool:
     auth_header = request.headers.get("Authorization") or request.headers.get("authorization")
@@ -64,7 +66,16 @@ def check_rapidapi_access(request: Request):
 
     settings = load_settings()
     sandbox_mode = settings.get("sandbox_mode", True)
-    secret = settings.get("rapidapi_proxy_secret", "")
+    
+    # Path-basiertes Secret auswählen (Web vs Reddit)
+    path = request.url.path
+    if path.startswith("/v1/web/"):
+        secret = settings.get("web_rapidapi_proxy_secret", "")
+        if not secret or not secret.strip():
+            secret = settings.get("rapidapi_proxy_secret", "")
+    else:
+        secret = settings.get("rapidapi_proxy_secret", "")
+        
     # Falls kein Proxy-Secret konfiguriert ist, lassen wir alle Anfragen durchgehen
     if not secret or not secret.strip():
         return

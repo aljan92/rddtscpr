@@ -40,6 +40,21 @@
             backdrop-filter: blur(12px);
             border: 1px solid rgba(31, 45, 68, 0.8);
         }
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0B1426;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1F2D44;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #10B981;
+        }
     </style>
 </head>
 <body class="text-slate-200 min-h-screen font-sans flex flex-col">
@@ -60,6 +75,7 @@
             </div>
         </div>
         <div class="flex items-center space-x-4">
+            <!-- Evomi Bandwidth Badge -->
             <div id="evomi-bandwidth-badge" class="hidden items-center space-x-1.5 text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
                 <i data-lucide="wifi" class="w-3.5 h-3.5"></i>
                 <span id="evomi-bandwidth-text">Evomi: -- GB</span>
@@ -76,6 +92,10 @@
                 <i data-lucide="play" class="w-4 h-4"></i>
                 <span>Playground</span>
             </a>
+            <a href="/admin/web-scraper/rapidapi-playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="terminal" class="w-4 h-4 text-blue-400"></i>
+                <span>RapidAPI Playground</span>
+            </a>
             <a href="/admin/web-scraper/settings" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
                 <i data-lucide="settings" class="w-4 h-4"></i>
                 <span>Settings</span>
@@ -85,98 +105,224 @@
 
     <!-- Main Content -->
     <main class="flex-grow p-6 max-w-7xl mx-auto w-full space-y-6">
-        <!-- Load Grid Info -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <!-- Queue Load Stats -->
-            <div class="glass-card p-6 rounded-2xl border border-scraper-border/60 flex flex-col justify-between">
-                <div>
-                    <span class="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-1">Aktive Scraping Jobs</span>
-                    <span class="text-3xl font-bold text-emerald-400" id="stats-active">{{ stats.scraping }}</span>
-                </div>
-                <div class="mt-4 text-xs text-slate-500">
-                    Browser-Instanzen, die derzeit Webseiten rendern.
-                </div>
+        <!-- Status Messages -->
+        <div id="alert-container">
+            {% if request.query_params.get('success') %}
+            <div class="flex items-center space-x-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 mb-6">
+                <i data-lucide="check-circle" class="w-5 h-5 flex-shrink-0"></i>
+                <p class="text-sm font-medium">{{ request.query_params.get('success') }}</p>
             </div>
-            
-            <div class="glass-card p-6 rounded-2xl border border-scraper-border/60 flex flex-col justify-between">
-                <div>
-                    <span class="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-1">Wartende Anfragen (Queue)</span>
-                    <span class="text-3xl font-bold text-slate-300" id="stats-waiting">{{ stats.waiting }}</span>
-                </div>
-                <div class="mt-4 text-xs text-slate-500">
-                    In Warteschlange stehende Anfragen vor Worker-Verarbeitung.
+            {% endif %}
+            {% if request.query_params.get('error') %}
+            <div class="flex items-center space-x-3 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 mb-6">
+                <i data-lucide="alert-circle" class="w-5 h-5 flex-shrink-0"></i>
+                <p class="text-sm font-medium">{{ request.query_params.get('error') }}</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <!-- Settings Card -->
+            <div class="glass-card p-6 rounded-2xl flex flex-col justify-between lg:col-span-1">
+                <div class="space-y-4">
+                    <h2 class="text-lg font-semibold text-white flex items-center space-x-2">
+                        <i data-lucide="sliders" class="w-5 h-5 text-scraper-emerald"></i>
+                        <span>Queue-Einstellungen</span>
+                    </h2>
+                    <p class="text-xs text-slate-400">
+                        Steuert die maximale Parallelität der Headless Browser-Instanzen (Workers), die gleichzeitig Scraping-Jobs abarbeiten.
+                    </p>
+                    
+                    <form action="/admin/web-scraper/queue/settings" method="POST" class="space-y-4 pt-2">
+                        <div>
+                            <label for="max_workers" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                                Max. Parallele Sessions (Workers)
+                            </label>
+                            <input type="number" min="1" max="20" name="max_workers" id="max_workers" value="{{ max_workers }}"
+                                   class="w-full bg-scraper-dark/50 border border-scraper-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-scraper-emerald focus:ring-1 focus:ring-scraper-emerald transition-all duration-200 font-medium">
+                        </div>
+
+                        <button type="submit" class="w-full bg-scraper-emerald hover:bg-emerald-400 text-scraper-dark font-bold py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center space-x-2 shadow-lg shadow-scraper-emerald/20">
+                            <i data-lucide="save" class="w-4 h-4"></i>
+                            <span>Speichern</span>
+                        </button>
+                    </form>
                 </div>
             </div>
 
-            <div class="glass-card p-6 rounded-2xl border border-scraper-border/60 flex flex-col justify-between">
-                <div>
-                    <span class="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-1">Max. Parallelität</span>
-                    <span class="text-3xl font-bold text-blue-400" id="stats-max-workers">{{ stats.max_workers }}</span>
+            <!-- Stats Card & Sparkline -->
+            <div class="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Card 1: Warteliste Info -->
+                <div class="bg-scraper-card/40 border border-scraper-border/50 rounded-xl p-5 flex flex-col justify-between">
+                    <div>
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Warteliste</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span class="text-3xl font-bold text-amber-500" id="stat-pending">{{ stats.pending }}</span>
+                            <span class="text-xs text-slate-500">wartend</span>
+                        </div>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span class="text-xl font-bold text-emerald-500" id="stat-active">{{ stats.active }}</span>
+                            <span class="text-xs text-slate-500">in Arbeit</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2 text-xs text-slate-400 mt-4 border-t border-scraper-border/30 pt-3">
+                        <i data-lucide="clock" class="w-4 h-4 text-amber-500"></i>
+                        <span>Ø Wartezeit: <strong class="text-white" id="stat-avg-wait">{{ stats.avg_wait_seconds }}s</strong></span>
+                    </div>
                 </div>
-                <div class="mt-4 text-xs text-slate-500">
-                    Konfigurierte Anzahl paralleler Scrape-Worker.
+
+                <!-- Card 2: Systemauslastung -->
+                <div class="bg-scraper-card/40 border border-scraper-border/50 rounded-xl p-5 flex flex-col justify-between">
+                    <div>
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Auslastung</span>
+                        <h3 class="text-3xl font-bold text-white mt-1" id="stat-load">{{ stats.current_load }}%</h3>
+                    </div>
+                    <div class="flex flex-col space-y-1.5 mt-4 border-t border-scraper-border/30 pt-3">
+                        <div class="flex items-center justify-between text-xs text-slate-400">
+                            <span class="flex items-center space-x-1.5">
+                                <span class="inline-block w-2 h-2 rounded-full bg-scraper-emerald shadow shadow-scraper-emerald/50"></span>
+                                <span>24h Peak:</span>
+                            </span>
+                            <strong class="text-white" id="stat-load-peak">{{ stats.max_24h_load }}%</strong>
+                        </div>
+                        <div class="flex items-center justify-between text-xs text-slate-400">
+                            <span class="flex items-center space-x-1.5">
+                                <span class="inline-block w-2 h-2 rounded-full bg-rose-500 shadow shadow-rose-500/50"></span>
+                                <span>Timeouts (499):</span>
+                            </span>
+                            <strong class="text-rose-400" id="stat-timeouts">{{ stats.global_timeouts }}</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 3: Sparkline Load History (SVG) -->
+                <div class="bg-scraper-card/40 border border-scraper-border/50 rounded-xl p-5 flex flex-col justify-between">
+                    <div>
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Auslastung (5 Min.)</span>
+                        <div class="h-16 w-full mt-2 relative" id="sparkline-container">
+                            <svg class="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none" id="sparkline-svg">
+                                <defs>
+                                    <linearGradient id="sparkline-grad" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="#10B981" stop-opacity="0.3"></stop>
+                                        <stop offset="100%" stop-color="#10B981" stop-opacity="0.0"></stop>
+                                    </linearGradient>
+                                </defs>
+                                <path d="" fill="url(#sparkline-grad)" id="sparkline-path-area"></path>
+                                <path d="" fill="none" stroke="#10B981" stroke-width="2.5" stroke-linecap="round" id="sparkline-path-line"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-[9px] text-slate-500 mt-2">
+                        <span>Vor 5 Min</span>
+                        <span>Jetzt</span>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Real-time Queue Item List -->
-        <div class="glass-card rounded-2xl overflow-hidden flex flex-col">
-            <div class="px-6 py-5 border-b border-scraper-border flex items-center justify-between bg-scraper-card/30">
-                <div>
-                    <h2 class="text-lg font-bold text-white">Aktuelle Requests in der Queue</h2>
-                    <p class="text-xs text-slate-400">Automatische Live-Aktualisierung alle 2 Sekunden</p>
+        <!-- Queue List -->
+        <div class="glass-card rounded-2xl overflow-hidden mt-6">
+            <div class="px-6 py-5 border-b border-scraper-border flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="bg-scraper-emerald/10 p-2 rounded-lg text-scraper-emerald">
+                        <i data-lucide="list-ordered" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-white">Anstehende &amp; Aktive Anfragen</h3>
+                        <p class="text-xs text-slate-400">Echtzeit-Ansicht der Hintergrund-Warteschlange</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2 text-xs text-slate-500">
+                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping mr-1"></span>
+                    <span>Live-Polling aktiv</span>
                 </div>
             </div>
             
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
+            <div class="overflow-x-auto w-full">
+                <table class="w-full text-left border-collapse" id="queue-table">
                     <thead>
-                        <tr class="border-b border-scraper-border text-[10px] uppercase tracking-wider text-slate-400 font-semibold bg-scraper-dark/30">
-                            <th class="px-6 py-4">Job-ID</th>
-                            <th class="px-6 py-4">URL</th>
-                            <th class="px-6 py-4">Eingereicht (UTC)</th>
-                            <th class="px-6 py-4">Status</th>
-                            <th class="px-6 py-4">Kontext</th>
+                        <tr class="border-b border-scraper-border text-slate-400 text-xs font-semibold uppercase tracking-wider bg-scraper-dark/20">
+                            <th class="px-6 py-4">Alter</th>
+                            <th class="px-6 py-4">Typ</th>
+                            <th class="px-6 py-4">Ziel-URL</th>
+                            <th class="px-6 py-4 text-right">Status</th>
                         </tr>
                     </thead>
-                    <tbody id="queue-table-body" class="divide-y divide-scraper-border text-sm text-slate-300">
-                        {% for r in requests %}
-                        <tr class="hover:bg-slate-800/30 transition-colors">
-                            <td class="px-6 py-4 font-mono text-xs text-slate-400">
-                                {{ r.id }}
-                            </td>
-                            <td class="px-6 py-4 max-w-md truncate" title="{{ r.url }}">
-                                {{ r.url }}
-                            </td>
-                            <td class="px-6 py-4 text-xs font-mono text-slate-400">
-                                {{ r.created_at }}
-                            </td>
-                            <td class="px-6 py-4">
-                                {% if r.status == 'Scraping' %}
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">
-                                    Scraping...
-                                </span>
-                                {% else %}
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20">
-                                    Wartend
-                                </span>
-                                {% endif %}
-                            </td>
-                            <td class="px-6 py-4 text-xs text-slate-500">
-                                {% if r.is_playground %}
-                                Playground
-                                {% else %}
-                                API
-                                {% endif %}
+                    <tbody class="divide-y divide-scraper-border/30 text-sm" id="queue-tbody">
+                        {% if not requests %}
+                        <tr id="empty-row">
+                            <td colspan="4" class="px-6 py-12 text-center text-slate-500">
+                                <div class="flex flex-col items-center space-y-3">
+                                    <i data-lucide="inbox" class="w-8 h-8 text-slate-600"></i>
+                                    <span class="font-medium text-slate-400">Keine aktiven Anfragen in der Warteschlange</span>
+                                </div>
                             </td>
                         </tr>
                         {% else %}
-                        <tr>
-                            <td colspan="5" class="px-6 py-12 text-center text-slate-500">
-                                Keine aktiven Anfragen in der Queue.
+                            {% for req in requests %}
+                            <tr class="hover:bg-slate-800/10 transition-colors">
+                                <td class="px-6 py-4 font-mono text-xs text-slate-400">{{ req.age_seconds }}s</td>
+                                <td class="px-6 py-4">
+                                    <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                                        {{ req.action }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 max-w-xl truncate font-medium text-slate-300" title="{{ req.target }}">
+                                    {{ req.target }}
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    {% if req.status == 'Wartend' %}
+                                    <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 border border-amber-500/20 text-amber-500">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                        <span>Wartend</span>
+                                    </span>
+                                    {% else %}
+                                    <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                                        <span>Scraping</span>
+                                    </span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Request Logs Section (Auto Refreshed) -->
+        <div class="glass-card rounded-2xl overflow-hidden mt-6">
+            <div class="p-6 border-b border-scraper-border flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i data-lucide="list-ordered" class="text-scraper-emerald w-5 h-5"></i>
+                    <h2 class="text-lg font-semibold text-white">Letzte API-Anfragen (Max. 50)</h2>
+                </div>
+                <a href="/admin/web-scraper/logs/clear" onclick="return confirm('Möchtest du wirklich alle Logs löschen?')" class="flex items-center space-x-1.5 text-xs text-rose-400 hover:text-rose-300 font-medium px-3 py-1.5 rounded-lg border border-rose-500/20 hover:bg-rose-500/10 transition-all duration-200">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    <span>Logs leeren</span>
+                </a>
+            </div>
+            
+            <div class="overflow-x-auto w-full">
+                <table class="w-full text-left border-collapse" id="logs-table">
+                    <thead>
+                        <tr class="bg-scraper-dark/30 border-b border-scraper-border text-slate-400 text-xs font-semibold uppercase">
+                            <th class="p-4">Zeitstempel</th>
+                            <th class="p-4">Endpunkt</th>
+                            <th class="p-4">Target URL</th>
+                            <th class="p-4">Modus</th>
+                            <th class="p-4">Dauer</th>
+                            <th class="p-4">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-scraper-border/30 text-sm" id="logs-tbody">
+                        <tr id="logs-empty-row">
+                            <td colspan="6" class="p-8 text-center text-slate-500">
+                                <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
+                                Keine Logs vorhanden.
                             </td>
                         </tr>
-                        {% endfor %}
                     </tbody>
                 </table>
             </div>
@@ -184,83 +330,160 @@
     </main>
 
     <!-- Footer -->
-    <footer class="glass-card mt-auto border-t border-scraper-border px-6 py-4 text-center text-xs text-slate-500">
-        Web Scraper Dashboard &copy; 2026. Made with Playwright, Evomi & FastAPI.
+    <footer class="glass-card border-t border-scraper-border px-6 py-4 mt-12 text-center text-xs text-slate-500">
+        <p>&copy; 2026 Web Scraper Control. Alle Rechte vorbehalten.</p>
     </footer>
 
     <script>
         lucide.createIcons();
 
         // Evomi Bandbreite abfragen
-        async function updateEvomiBandwidth() {
-            try {
-                const res = await fetch("/admin/web-scraper/evomi-balance");
-                const data = await res.json();
-                const badge = document.getElementById("evomi-bandwidth-badge");
-                const text = document.getElementById("evomi-bandwidth-text");
-                
-                if (data.status === "success" && data.remaining !== null) {
-                    text.innerText = "Evomi: " + data.remaining + " GB";
-                    badge.classList.remove("hidden");
-                    badge.classList.add("flex");
-                } else {
-                    badge.classList.add("hidden");
+        fetch('/admin/web-scraper/evomi-balance')
+            .then(res => res.json())
+            .then(data => {
+                const badge = document.getElementById('evomi-bandwidth-badge');
+                const text = document.getElementById('evomi-bandwidth-text');
+                if (data.status === 'success' && data.remaining !== null) {
+                    text.textContent = `Evomi: ${data.remaining} GB`;
+                    badge.classList.remove('hidden');
+                    badge.classList.add('flex');
+                    lucide.createIcons();
                 }
-            } catch (e) {
-                console.error(e);
-            }
-        }
+            })
+            .catch(err => console.error(err));
 
-        // Real-time Queue updates
-        async function refreshQueueData() {
+        async function updateQueue() {
             try {
                 const res = await fetch("/admin/web-scraper/queue/api");
                 const data = await res.json();
                 
-                // Update stats
-                document.getElementById("stats-active").innerText = data.stats.scraping;
-                document.getElementById("stats-waiting").innerText = data.stats.waiting;
-                document.getElementById("stats-max-workers").innerText = data.stats.max_workers;
+                // Update header stats
+                document.getElementById('stat-pending').innerText = data.stats.pending;
+                document.getElementById('stat-active').innerText = data.stats.active;
+                document.getElementById('stat-avg-wait').innerText = data.stats.avg_wait_seconds + 's';
+                document.getElementById('stat-load').innerText = data.stats.current_load + '%';
+                document.getElementById('stat-load-peak').innerText = data.stats.max_24h_load + '%';
+                document.getElementById('stat-timeouts').innerText = data.stats.global_timeouts;
                 
-                // Update table
-                const tbody = document.getElementById("queue-table-body");
+                // Update sparkline
+                if (data.sparkline && data.sparkline.length > 1) {
+                    const maxVal = Math.max(...data.sparkline, 10);
+                    const width = 100;
+                    const points = data.sparkline.map((val, idx) => {
+                        const x = (idx / (data.sparkline.length - 1)) * 100;
+                        const y = 100 - (val / maxVal) * 90;
+                        return {x, y};
+                    });
+                    
+                    const linePath = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+                    const areaPath = `${linePath} L 100 100 L 0 100 Z`;
+                    
+                    document.getElementById('sparkline-path-line').setAttribute('d', linePath);
+                    document.getElementById('sparkline-path-area').setAttribute('d', areaPath);
+                } else {
+                    document.getElementById('sparkline-path-line').setAttribute('d', '');
+                    document.getElementById('sparkline-path-area').setAttribute('d', '');
+                }
+
+                // Update requests table
+                const tbody = document.getElementById('queue-tbody');
                 if (data.requests.length === 0) {
                     tbody.innerHTML = `
-                        <tr>
-                            <td colspan="5" class="px-6 py-12 text-center text-slate-500">
-                                Keine aktiven Anfragen in der Queue.
+                        <tr id="empty-row">
+                            <td colspan="4" class="px-6 py-12 text-center text-slate-500">
+                                <div class="flex flex-col items-center space-y-3">
+                                    <i data-lucide="inbox" class="w-8 h-8 text-slate-600"></i>
+                                    <span class="font-medium text-slate-400">Keine aktiven Anfragen in der Warteschlange</span>
+                                </div>
                             </td>
                         </tr>
                     `;
                 } else {
-                    tbody.innerHTML = data.requests.map(r => {
-                        const statusBadge = r.status === 'Scraping' 
-                            ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">Scraping...</span>`
-                            : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20">Wartend</span>`;
-                            
-                        const dateStr = r.created_at ? r.created_at.substring(0, 19).replace('T', ' ') : '-';
-                        const contextStr = r.is_playground ? 'Playground' : 'API';
+                    let html = '';
+                    data.requests.forEach(req => {
+                        let badgeClass = req.status === 'Wartend'
+                            ? 'bg-amber-500/10 border-amber-500/20 text-amber-500'
+                            : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400';
+                        let dotClass = req.status === 'Wartend' ? 'bg-amber-500' : 'bg-emerald-500 animate-ping';
                         
-                        return `
-                            <tr class="hover:bg-slate-800/30 transition-colors">
-                                <td class="px-6 py-4 font-mono text-xs text-slate-400">${r.id}</td>
-                                <td class="px-6 py-4 max-w-md truncate" title="${r.url}">${r.url}</td>
-                                <td class="px-6 py-4 text-xs font-mono text-slate-400">${dateStr}</td>
-                                <td class="px-6 py-4">${statusBadge}</td>
-                                <td class="px-6 py-4 text-xs text-slate-500">${contextStr}</td>
+                        html += `
+                            <tr class="hover:bg-slate-800/10 transition-colors">
+                                <td class="px-6 py-4 font-mono text-xs text-slate-400">${req.age_seconds}s</td>
+                                <td class="px-6 py-4">
+                                    <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                                        ${req.action}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 max-w-xl truncate font-medium text-slate-300" title="${req.target}">
+                                    ${req.target}
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold ${badgeClass} border">
+                                        <span class="w-1.5 h-1.5 rounded-full ${dotClass}"></span>
+                                        <span>${req.status}</span>
+                                    </span>
+                                </td>
                             </tr>
                         `;
-                    }).join('');
+                    });
+                    tbody.innerHTML = html;
+                }
+
+                // Update logs table
+                const logsTbody = document.getElementById('logs-tbody');
+                if (!data.logs || data.logs.length === 0) {
+                    logsTbody.innerHTML = `
+                        <tr id="logs-empty-row">
+                            <td colspan="6" class="p-8 text-center text-slate-500">
+                                <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
+                                Keine Logs vorhanden.
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    let logsHtml = '';
+                    data.logs.forEach(log => {
+                        let methodBadge = log.method_used === 'STEALTH'
+                            ? '<span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">STEALTH</span>'
+                            : '<span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">NORMAL</span>';
+                        
+                        let statusBadge = '';
+                        if (log.status_code === 200) {
+                            statusBadge = '<span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><i data-lucide="check" class="w-3.5 h-3.5 mr-1"></i> 200 OK</span>';
+                        } else if (log.status_code >= 400 && log.status_code < 500) {
+                            statusBadge = `<span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/20 cursor-help" title="${log.error_message}"><i data-lucide="alert-triangle" class="w-3.5 h-3.5 mr-1"></i> ${log.status_code} Client Error</span>`;
+                        } else {
+                            statusBadge = `<span class="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20 cursor-help" title="${log.error_message}"><i data-lucide="alert-circle" class="w-3.5 h-3.5 mr-1"></i> ${log.status_code} Scraper Error</span>`;
+                        }
+                        
+                        logsHtml += `
+                            <tr class="hover:bg-slate-800/20 transition-all duration-150">
+                                <td class="p-4 text-slate-400 font-mono text-xs">${log.timestamp}</td>
+                                <td class="p-4">
+                                    <span class="px-2 py-0.5 rounded font-mono text-xs bg-slate-900 border border-scraper-border text-slate-300">
+                                        ${log.endpoint}
+                                    </span>
+                                </td>
+                                <td class="p-4 font-medium text-white max-w-xs truncate">
+                                    <span title="${log.target}">${log.target}</span>
+                                </td>
+                                <td class="p-4">${methodBadge}</td>
+                                <td class="p-4 font-mono text-slate-300">${log.response_time_ms} ms</td>
+                                <td class="p-4">${statusBadge}</td>
+                            </tr>
+                        `;
+                    });
+                    logsTbody.innerHTML = logsHtml;
                 }
                 
                 lucide.createIcons();
-            } catch (e) {
-                console.error("Queue refresh failed:", e);
+            } catch (err) {
+                console.error(err);
             }
         }
 
-        updateEvomiBandwidth();
-        setInterval(refreshQueueData, 2000); // Alle 2 Sekunden refreshen
+        updateQueue();
+        setInterval(updateQueue, 1000); // Polling every 1 second
     </script>
 </body>
 </html>

@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if api == 'web' %}Web Scraper{% else %}Reddit Scraper{% endif %} - Einstellungen</title>
+    <!-- Outfit Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        reddit: {
+                            orange: '#FF4500',
+                            dark: '#0B1426',
+                            card: '#152238',
+                            border: '#1F2D44'
+                        },
+                        scraper: {
+                            emerald: '#10B981',
+                            dark: '#0B1426',
+                            card: '#152238',
+                            border: '#1F2D44'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            background-color: #0B1426;
+            {% if api == 'web' %}
+            background-image: radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.05) 0%, transparent 40%),
+                              radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 40%);
+            {% else %}
+            background-image: radial-gradient(circle at 10% 20%, rgba(255, 69, 0, 0.05) 0%, transparent 40%),
+                              radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 40%);
+            {% endif %}
+        }
+        .glass-card {
+            background: rgba(21, 34, 56, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(31, 45, 68, 0.8);
+        }
+        /* Custom Toggle Switch Style */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+        }
+        .switch input { 
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #1F2D44;
+            transition: .3s;
+            border-radius: 34px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: #94A3B8;
+            transition: .3s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            {% if api == 'web' %}
+            background-color: #10B981;
+            {% else %}
+            background-color: #FF4500;
+            {% endif %}
+        }
+        input:checked + .slider:before {
+            transform: translateX(24px);
+            background-color: white;
+        }
+    </style>
+</head>
+<body class="text-slate-200 min-h-screen font-sans flex flex-col">
+    <!-- Navbar -->
+    {% if api == 'web' %}
+    <nav class="glass-card sticky top-0 z-50 border-b border-scraper-border px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="bg-scraper-emerald p-2 rounded-xl text-white shadow-lg shadow-scraper-emerald/20 animate-pulse">
+                <i data-lucide="globe" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <div class="flex items-center space-x-2">
+                    <h1 class="text-xl font-bold tracking-tight text-white">Web Scraper</h1>
+                    <a href="/admin/dashboard" class="text-[10px] font-bold tracking-wider uppercase bg-orange-500/10 text-orange-500 border border-orange-500/20 px-2 py-0.5 rounded-full hover:bg-orange-500/20 transition-all">
+                        To Reddit Scraper
+                    </a>
+                </div>
+                <p class="text-xs text-slate-400">Agentic RAG Engine v1.0.0</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <div id="evomi-bandwidth-badge" class="hidden items-center space-x-1.5 text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
+                <i data-lucide="wifi" class="w-3.5 h-3.5"></i>
+                <span id="evomi-bandwidth-text">Evomi: -- GB</span>
+            </div>
+            <a href="/admin/web-scraper/dashboard" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="/admin/web-scraper/queue" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="list-ordered" class="w-4 h-4"></i>
+                <span>Queue</span>
+            </a>
+            <a href="/admin/web-scraper/playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="play" class="w-4 h-4"></i>
+                <span>Playground</span>
+            </a>
+            <a href="/admin/web-scraper/rapidapi-playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="terminal" class="w-4 h-4 text-blue-400"></i>
+                <span>RapidAPI Playground</span>
+            </a>
+            <a href="/admin/settings?api=web" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg bg-scraper-emerald/10 text-scraper-emerald border border-scraper-emerald/20 hover:bg-scraper-emerald/20 transition-all duration-200">
+                <i data-lucide="settings" class="w-4 h-4"></i>
+                <span>Settings</span>
+            </a>
+        </div>
+    </nav>
+    {% else %}
+    <nav class="glass-card sticky top-0 z-50 border-b border-reddit-border px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="bg-reddit-orange p-2 rounded-xl text-white shadow-lg shadow-reddit-orange/20 animate-pulse">
+                <i data-lucide="database" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <div class="flex items-center space-x-2">
+                    <h1 class="text-xl font-bold tracking-tight text-white">Reddit Scraper</h1>
+                    <a href="/admin/web-scraper/dashboard" class="text-[10px] font-bold tracking-wider uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full hover:bg-emerald-500/20 transition-all">
+                        To Web Scraper
+                    </a>
+                </div>
+                <p class="text-xs text-slate-400">Data Extraction Engine v1.0.0</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <div id="evomi-bandwidth-badge" class="hidden items-center space-x-1.5 text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
+                <i data-lucide="wifi" class="w-3.5 h-3.5"></i>
+                <span id="evomi-bandwidth-text">Evomi: -- GB</span>
+            </div>
+            <a href="/admin/dashboard" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="/admin/queue" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="list-ordered" class="w-4 h-4"></i>
+                <span>Queue</span>
+            </a>
+            <a href="/admin/playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="play" class="w-4 h-4"></i>
+                <span>Playground</span>
+            </a>
+            <a href="/admin/rapidapi-playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="globe" class="w-4 h-4 text-blue-400"></i>
+                <span>RapidAPI Playground</span>
+            </a>
+            <a href="/admin/settings?api=reddit" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg bg-reddit-orange/10 text-reddit-orange border border-reddit-orange/20 hover:bg-reddit-orange/20 transition-all duration-200">
+                <i data-lucide="settings" class="w-4 h-4"></i>
+                <span>Settings</span>
+            </a>
+        </div>
+    </nav>
+    {% endif %}
+
+    <!-- Main Content -->
+    <main class="flex-grow p-6 max-w-4xl mx-auto w-full space-y-6">
+        <!-- Status Messages -->
+        <div id="alert-container">
+            {% if request.query_params.get('success') %}
+            <div class="flex items-center space-x-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 mb-6">
+                <i data-lucide="check-circle" class="w-5 h-5 flex-shrink-0"></i>
+                <p class="text-sm font-medium">{{ request.query_params.get('success') }}</p>
+            </div>
+            {% endif %}
+            {% if request.query_params.get('error') %}
+            <div class="flex items-center space-x-3 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 mb-6">
+                <i data-lucide="alert-circle" class="w-5 h-5 flex-shrink-0"></i>
+                <p class="text-sm font-medium">{{ request.query_params.get('error') }}</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Tab Bar -->
+        <div class="flex border-b border-reddit-border/50 space-x-4 mb-4">
+            <button onclick="switchTab('global')" id="tab-btn-global" class="py-2.5 px-4 font-semibold text-sm transition-all border-b-2 border-transparent hover:text-white flex items-center gap-2">
+                <i data-lucide="globe" class="w-4 h-4"></i>
+                <span>Globale Einstellungen</span>
+            </button>
+            <button onclick="switchTab('reddit')" id="tab-btn-reddit" class="py-2.5 px-4 font-semibold text-sm transition-all border-b-2 border-transparent hover:text-white flex items-center gap-2">
+                <i data-lucide="database" class="w-4 h-4"></i>
+                <span>Reddit Scraper</span>
+            </button>
+            <button onclick="switchTab('web')" id="tab-btn-web" class="py-2.5 px-4 font-semibold text-sm transition-all border-b-2 border-transparent hover:text-white flex items-center gap-2">
+                <i data-lucide="globe-2" class="w-4 h-4"></i>
+                <span>Web Scraper</span>
+            </button>
+        </div>
+
+        <form action="/admin/settings?api={{ api }}" method="POST" class="space-y-6">
+            <!-- Hidden API Context input -->
+            <input type="hidden" name="api" value="{{ api }}">
+
+            <!-- Tab 1: Global Settings -->
+            <div id="tab-content-global" class="tab-content space-y-6 hidden">
+                <div class="glass-card p-8 rounded-2xl space-y-6">
+                    <div class="flex items-center space-x-3 border-b border-reddit-border pb-4">
+                        <div class="{% if api == 'web' %}text-scraper-emerald bg-scraper-emerald/10{% else %}text-reddit-orange bg-reddit-orange/10{% endif %} p-2 rounded-lg">
+                            <i data-lucide="settings" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-semibold text-white">Gemeinsame / Globale Einstellungen</h2>
+                            <p class="text-xs text-slate-400">Diese Parameter gelten systemweit für alle Scraper und Dienste</p>
+                        </div>
+                    </div>
+
+                    <!-- Rotierende Proxy-URL für accountloses Scraping -->
+                    <div class="space-y-4">
+                        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
+                            <i data-lucide="shuffle" class="w-4 h-4 {% if api == 'web' %}text-scraper-emerald{% else %}text-reddit-orange{% endif %}"></i>
+                            <span>Rotierender Proxy (für accountlose &amp; Standard-Sessions)</span>
+                        </h3>
+                        <p class="text-xs text-slate-500">
+                            Der Proxy, der für Standard-Scraping-Anfragen (ohne eingewählte Accounts) und die Web-RAG-Engine verwendet wird. Evomi benötigt hierfür ein rotierendes Profil (ohne Sticky-Session).
+                        </p>
+                        <div class="space-y-3">
+                            <div class="flex flex-col md:flex-row space-y-3 md:space-y-0 md:space-x-3">
+                                <div class="relative flex-grow">
+                                    <input type="text" name="rotating_proxy_url" id="rotating_proxy_url" value="{{ rotating_proxy_url or '' }}"
+                                           placeholder="http://user:pass@core-residential.evomi.com:1000"
+                                           class="w-full bg-reddit-dark/50 border border-reddit-border rounded-xl px-4 py-3 text-white placeholder-slate-650 focus:outline-none focus:ring-1 transition-all duration-200 font-mono text-xs {% if api == 'web' %}focus:border-scraper-emerald focus:ring-scraper-emerald{% else %}focus:border-reddit-orange focus:ring-reddit-orange{% endif %}">
+                                </div>
+                                <button type="button" onclick="testRotatingProxy()" id="btn-test-proxy"
+                                        class="bg-slate-800 hover:bg-slate-700 text-white font-medium py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center space-x-2 border border-reddit-border shadow-sm cursor-pointer whitespace-nowrap">
+                                    <i data-lucide="activity" class="w-4 h-4 text-emerald-400"></i>
+                                    <span>Proxy testen</span>
+                                </button>
+                            </div>
+                            <!-- Test-Ergebnis Anzeige -->
+                            <div id="proxy-test-result" class="hidden p-4 rounded-xl text-xs font-medium flex items-center space-x-3 animate-fade-in"></div>
+                        </div>
+                    </div>
+
+                    <!-- Evomi API-Key für Bandbreitenabfrage -->
+                    <div class="border-t border-reddit-border/30 pt-6 space-y-4">
+                        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
+                            <i data-lucide="wifi" class="w-4 h-4 text-emerald-400"></i>
+                            <span>Evomi API-Key (für Bandbreitenabfrage)</span>
+                        </h3>
+                        <p class="text-xs text-slate-500">
+                            Dein öffentlicher Evomi API-Key, um das verbleibende Datenvolumen (Residential IPs) direkt oben im Dashboard anzuzeigen.
+                        </p>
+                        <div class="space-y-3">
+                            <input type="text" name="evomi_api_key" id="evomi_api_key" value="{{ settings.get('evomi_api_key', '') }}"
+                                   placeholder="1a4b2b41-3515-4938-a0a9-a7493b550039"
+                                   class="w-full bg-reddit-dark/50 border border-reddit-border rounded-xl px-4 py-3 text-white placeholder-slate-650 focus:outline-none focus:ring-1 transition-all duration-200 font-mono text-xs {% if api == 'web' %}focus:border-scraper-emerald focus:ring-scraper-emerald{% else %}focus:border-reddit-orange focus:ring-reddit-orange{% endif %}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 2: Reddit Scraper Settings -->
+            <div id="tab-content-reddit" class="tab-content space-y-6 hidden">
+                <div class="glass-card p-8 rounded-2xl space-y-6">
+                    <div class="flex items-center space-x-3 border-b border-reddit-border pb-4">
+                        <div class="text-reddit-orange bg-reddit-orange/10 p-2 rounded-lg">
+                            <i data-lucide="database" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-semibold text-white">Reddit Scraper Einstellungen</h2>
+                            <p class="text-xs text-slate-400">Konfiguration für API-Schutz und die asynchrone Reddit Account-Queue</p>
+                        </div>
+                    </div>
+
+                    <!-- Sandbox mode toggle -->
+                    <div class="flex items-start justify-between bg-reddit-dark/30 border border-reddit-border/50 rounded-xl p-5">
+                        <div class="space-y-1 pr-4">
+                            <label class="text-sm font-semibold text-white flex items-center space-x-2">
+                                <span>Sandbox-Modus</span>
+                                <span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-reddit-orange/10 text-reddit-orange border border-reddit-orange/20">Testen</span>
+                            </label>
+                            <p class="text-xs text-slate-400">
+                                Im Sandbox-Modus wird die Prüfung des `Proxy-Secret` Headers übersprungen. Du kannst die API direkt aufrufen und über den `X-RapidAPI-Subscription` Header beliebige Abonnements (Basic, Pro, Ultra) simulieren.
+                            </p>
+                        </div>
+                        <div>
+                            <label class="switch">
+                                <input type="checkbox" name="sandbox_mode" id="sandbox_mode" {% if settings.sandbox_mode %}checked{% endif %} value="true">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Sandbox Mode Live Indicator -->
+                    <div id="sandbox-warning" class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center space-x-3 text-xs font-medium {% if not settings.sandbox_mode %}hidden{% endif %}">
+                        <i data-lucide="alert-triangle" class="w-4 h-4 flex-shrink-0 animate-bounce"></i>
+                        <span>Sandbox-Modus is AKTIV. Es ist kein Proxy-Secret-Schutz auf den öffentlichen Endpunkten aktiv.</span>
+                    </div>
+
+                    <!-- Proxy secret field -->
+                    <div class="space-y-2">
+                        <label for="rapidapi_proxy_secret" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                            RapidAPI Proxy-Secret
+                        </label>
+                        <p class="text-xs text-slate-500">
+                            Das geheime Token aus deinem RapidAPI Entwickler-Dashboard für den Reddit-Scraper. Schützt deine API vor Zugriffen außerhalb von RapidAPI, sobald der Sandbox-Modus deaktiviert ist.
+                        </p>
+                        <div class="relative">
+                            <input type="password" name="rapidapi_proxy_secret" id="rapidapi_proxy_secret" value="{{ settings.rapidapi_proxy_secret or '' }}"
+                                   placeholder="Geringer Schutz / Kein Secret hinterlegt"
+                                   class="w-full bg-reddit-dark/50 border border-reddit-border rounded-xl pl-4 pr-12 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange focus:ring-1 focus:ring-reddit-orange transition-all duration-200 font-mono text-sm">
+                            <button type="button" onclick="togglePasswordVisibility('rapidapi_proxy_secret', 'eye-secret-reddit')" class="absolute right-4 top-3 text-slate-500 hover:text-white transition-colors">
+                                <i data-lucide="eye" id="eye-secret-reddit" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- RapidAPI Playground Credentials -->
+                    <div class="border-t border-reddit-border/30 pt-6 space-y-4">
+                        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
+                            <i data-lucide="key" class="w-4 h-4 text-blue-400"></i>
+                            <span>RapidAPI Test-Playground Zugangsdaten (Reddit Scraper)</span>
+                        </h3>
+                        <p class="text-xs text-slate-500">
+                            Diese Werte werden ausschließlich lokal verwendet, um API-Anfragen im "RapidAPI Playground" über das offizielle RapidAPI-Gateway zu simulieren.
+                        </p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="space-y-2">
+                                <label for="rapidapi_key" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                                    X-RapidAPI-Key
+                                </label>
+                                <input type="password" name="rapidapi_key" id="rapidapi_key" value="{{ settings.rapidapi_key or '' }}"
+                                       placeholder="Kopiere deinen X-RapidAPI-Key"
+                                       class="w-full bg-reddit-dark/50 border border-reddit-border rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange focus:ring-1 focus:ring-reddit-orange transition-all duration-200 font-mono text-xs">
+                            </div>
+                            <div class="space-y-2">
+                                <label for="rapidapi_host" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                                    X-RapidAPI-Host
+                                </label>
+                                <input type="text" name="rapidapi_host" id="rapidapi_host" value="{{ settings.rapidapi_host or '' }}"
+                                       placeholder="z.B. reddit-scraper.p.rapidapi.com"
+                                       class="w-full bg-reddit-dark/50 border border-reddit-border rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-reddit-orange focus:ring-1 focus:ring-reddit-orange transition-all duration-200 font-mono text-xs">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Queue settings -->
+                    <div class="border-t border-reddit-border/30 pt-6 space-y-4">
+                        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
+                            <i data-lucide="sliders" class="w-4 h-4 text-reddit-orange"></i>
+                            <span>Queue- und Cooldown-Einstellungen (Reddit)</span>
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="space-y-2">
+                                <label for="cooldown_mode" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">Cooldown-Modus</label>
+                                <select name="cooldown_mode" id="cooldown_mode" class="w-full bg-reddit-dark/50 border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                                    <option value="auto" {% if cooldown_mode == 'auto' %}selected{% endif %}>Automatisch (Adaptive)</option>
+                                    <option value="fixed" {% if cooldown_mode == 'fixed' %}selected{% endif %}>Fest (Manuell)</option>
+                                </select>
+                            </div>
+                            <div class="space-y-2">
+                                <label for="cooldown_seconds" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">Manuelle Pause (Sek.)</label>
+                                <input type="number" step="0.5" name="cooldown_seconds" id="cooldown_seconds" value="{{ cooldown_seconds }}" class="w-full bg-reddit-dark/50 border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                            </div>
+                            <div class="space-y-2">
+                                <label for="max_accountless_sessions" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">Max. Accountlose Sessions</label>
+                                <input type="number" name="max_accountless_sessions" id="max_accountless_sessions" value="{{ max_accountless_sessions }}" class="w-full bg-reddit-dark/50 border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reset Statistics Card -->
+                <div class="glass-card p-8 rounded-2xl space-y-6">
+                    <div class="flex items-center space-x-3 border-b border-reddit-border pb-4">
+                        <div class="bg-rose-500/10 p-2 rounded-lg text-rose-500">
+                            <i data-lucide="trash-2" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-semibold text-white">Reddit-Statistiken zurücksetzen</h2>
+                            <p class="text-xs text-slate-400">Setze alle Reddit Scrape-Zähler und Request-Logs zurück</p>
+                        </div>
+                    </div>
+                    <p class="text-xs text-slate-400 leading-relaxed">
+                        Diese Aktion löscht unwiderruflich alle Reddit-Request-Logs aus der Datenbank und setzt den Request-Zähler (<code class="text-slate-300 font-mono">request_count</code>) aller Reddit-Accounts auf 0 zurück.
+                    </p>
+                    <button type="submit" formmethod="POST" formaction="/admin/settings/reset-stats" onclick="return confirm('Möchtest du wirklich alle API-Statistiken und Request-Zähler der Reddit-Accounts zurücksetzen? Dies kann nicht rückgängig gemacht werden.');"
+                            class="bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 border border-rose-500/20 font-medium py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center space-x-2 cursor-pointer">
+                        <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                        <span>Reddit-Statistiken jetzt leeren</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab 3: Web Scraper Settings -->
+            <div id="tab-content-web" class="tab-content space-y-6 hidden">
+                <div class="glass-card p-8 rounded-2xl space-y-6">
+                    <div class="flex items-center space-x-3 border-b border-scraper-border pb-4">
+                        <div class="text-scraper-emerald bg-scraper-emerald/10 p-2 rounded-lg">
+                            <i data-lucide="globe" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-semibold text-white">Web Scraper Einstellungen</h2>
+                            <p class="text-xs text-slate-400">Konfiguration für API-Schutz und die asynchrone Web-Scraper-Queue</p>
+                        </div>
+                    </div>
+
+                    <!-- Proxy secret field (Web Scraper) -->
+                    <div class="space-y-2">
+                        <label for="web_rapidapi_proxy_secret" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                            RapidAPI Proxy-Secret (Web Scraper)
+                        </label>
+                        <p class="text-xs text-slate-500">
+                            Das geheime Token aus deinem RapidAPI Entwickler-Dashboard für den Web-Scraper (RAG &amp; Markdown). Schützt deine API vor Zugriffen außerhalb von RapidAPI, sobald der Sandbox-Modus deaktiviert ist.
+                        </p>
+                        <div class="relative">
+                            <input type="password" name="web_rapidapi_proxy_secret" id="web_rapidapi_proxy_secret" value="{{ settings.web_rapidapi_proxy_secret or '' }}"
+                                   placeholder="Geringer Schutz / Kein Secret hinterlegt"
+                                   class="w-full bg-reddit-dark/50 border border-scraper-border rounded-xl pl-4 pr-12 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-scraper-emerald focus:ring-1 focus:ring-scraper-emerald transition-all duration-200 font-mono text-sm">
+                            <button type="button" onclick="togglePasswordVisibility('web_rapidapi_proxy_secret', 'eye-secret-web')" class="absolute right-4 top-3 text-slate-500 hover:text-white transition-colors">
+                                <i data-lucide="eye" id="eye-secret-web" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- RapidAPI Playground Credentials (Web Scraper) -->
+                    <div class="border-t border-scraper-border/30 pt-6 space-y-4">
+                        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
+                            <i data-lucide="key" class="w-4 h-4 text-blue-400"></i>
+                            <span>RapidAPI Test-Playground Zugangsdaten (Web Scraper)</span>
+                        </h3>
+                        <p class="text-xs text-slate-500">
+                            Diese Werte werden ausschließlich lokal verwendet, um API-Anfragen im "Web Scraper RapidAPI Playground" über das offizielle RapidAPI-Gateway zu simulieren.
+                        </p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="space-y-2">
+                                <label for="web_rapidapi_key" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                                    X-RapidAPI-Key
+                                </label>
+                                <input type="password" name="web_rapidapi_key" id="web_rapidapi_key" value="{{ settings.web_rapidapi_key or '' }}"
+                                       placeholder="Kopiere deinen X-RapidAPI-Key für den Web-Scraper"
+                                       class="w-full bg-reddit-dark/50 border border-scraper-border rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-scraper-emerald focus:ring-1 focus:ring-scraper-emerald transition-all duration-200 font-mono text-xs">
+                            </div>
+                            <div class="space-y-2">
+                                <label for="web_rapidapi_host" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                                    X-RapidAPI-Host
+                                </label>
+                                <input type="text" name="web_rapidapi_host" id="web_rapidapi_host" value="{{ settings.web_rapidapi_host or '' }}"
+                                       placeholder="z.B. web-scraper-rag-markdown.p.rapidapi.com"
+                                       class="w-full bg-reddit-dark/50 border border-scraper-border rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-scraper-emerald focus:ring-1 focus:ring-scraper-emerald transition-all duration-200 font-mono text-xs">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Worker settings -->
+                    <div class="border-t border-scraper-border/30 pt-6 space-y-4">
+                        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
+                            <i data-lucide="sliders" class="w-4 h-4 text-scraper-emerald"></i>
+                            <span>Parallelitäts-Einstellungen (Web Scraper)</span>
+                        </h3>
+                        <div class="space-y-2">
+                            <label for="web_scraper_max_workers" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">Max. Parallele Sessions (Workers)</label>
+                            <input type="number" min="1" max="20" name="web_scraper_max_workers" id="web_scraper_max_workers" value="{{ web_scraper_max_workers }}"
+                                   class="w-full bg-reddit-dark/50 border border-scraper-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-scraper-emerald transition-all duration-200 max-w-[200px]">
+                            <p class="text-[10px] text-slate-500">Die Anzahl an parallel laufenden Headless Browsern, die Webseiten gleichzeitig verarbeiten.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reset Statistics Card -->
+                <div class="glass-card p-8 rounded-2xl space-y-6">
+                    <div class="flex items-center space-x-3 border-b border-scraper-border pb-4">
+                        <div class="bg-rose-500/10 p-2 rounded-lg text-rose-500">
+                            <i data-lucide="trash-2" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-semibold text-white">Web-Scraper-Statistiken zurücksetzen</h2>
+                            <p class="text-xs text-slate-400">Setze alle Web-Scraper-Request-Logs in der Datenbank zurück</p>
+                        </div>
+                    </div>
+                    <p class="text-xs text-slate-400 leading-relaxed">
+                        Diese Aktion löscht unwiderruflich alle protokollierten Web-Scraper API-Anfragen aus der Datenbank.
+                    </p>
+                    <button type="submit" formmethod="POST" formaction="/admin/web-scraper/settings/reset-stats" onclick="return confirm('Möchtest du wirklich alle API-Statistiken des Web-Scrapers zurücksetzen? Dies kann nicht rückgängig gemacht werden.');"
+                            class="bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 border border-rose-500/20 font-medium py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center space-x-2 cursor-pointer">
+                        <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                        <span>Web-Statistiken jetzt leeren</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Submit Button (Sticky/Bottom) -->
+            <div class="pt-4 flex justify-end">
+                <button type="submit" class="w-full md:w-auto px-8 py-3.5 rounded-xl font-bold transition-all duration-200 flex items-center justify-center space-x-2 shadow-lg hover:scale-[1.01] active:scale-[0.99] cursor-pointer {% if api == 'web' %}bg-scraper-emerald hover:bg-emerald-400 text-scraper-dark shadow-scraper-emerald/20{% else %}bg-reddit-orange hover:bg-reddit-orange/90 text-white shadow-reddit-orange/20{% endif %}">
+                    <i data-lucide="save" class="w-5 h-5"></i>
+                    <span>Einstellungen speichern</span>
+                </button>
+            </div>
+        </form>
+    </main>
+
+    <!-- Footer -->
+    <footer class="glass-card border-t border-reddit-border px-6 py-4 mt-12 text-center text-xs text-slate-500">
+        <p>&copy; 2026 Scraper Suite. Alle Rechte vorbehalten.</p>
+    </footer>
+
+    <script>
+        // Init Lucide Icons
+        lucide.createIcons();
+
+        // Evomi Bandbreite abfragen
+        fetch('/admin/evomi-balance')
+            .then(res => res.json())
+            .then(data => {
+                const badge = document.getElementById('evomi-bandwidth-badge');
+                const text = document.getElementById('evomi-bandwidth-text');
+                if (data.status === 'success' && data.remaining !== null) {
+                    text.textContent = `Evomi: ${data.remaining} GB`;
+                    badge.classList.remove('hidden');
+                    badge.classList.add('flex');
+                    lucide.createIcons();
+                }
+            })
+            .catch(err => console.error(err));
+
+        // ========= Tab Switcher Logic =========
+        function switchTab(tabId) {
+            // Hide all contents
+            document.querySelectorAll('.tab-content').forEach(el => {
+                el.classList.add('hidden');
+            });
+            // Show selected content
+            document.getElementById('tab-content-' + tabId).classList.remove('hidden');
+
+            // Deactivate all tab buttons
+            document.querySelectorAll('[id^="tab-btn-"]').forEach(btn => {
+                btn.className = "py-2.5 px-4 font-semibold text-sm transition-all border-b-2 border-transparent hover:text-white flex items-center gap-2 text-slate-400";
+            });
+
+            // Activate current tab button
+            const activeBtn = document.getElementById('tab-btn-' + tabId);
+            {% if api == 'web' %}
+            activeBtn.className = "py-2.5 px-4 font-semibold text-sm transition-all border-b-2 border-scraper-emerald text-scraper-emerald flex items-center gap-2";
+            {% else %}
+            activeBtn.className = "py-2.5 px-4 font-semibold text-sm transition-all border-b-2 border-reddit-orange text-reddit-orange flex items-center gap-2";
+            {% endif %}
+        }
+
+        // Auto-activate default tab based on query param or api context
+        const urlParams = new URLSearchParams(window.location.search);
+        let activeTab = urlParams.get('tab') || 'global';
+        if (!urlParams.get('tab')) {
+            // Fallback: If apicontext is web, default to web tab. If reddit, default to reddit tab
+            activeTab = "{{ api }}" === "web" ? "web" : "reddit";
+        }
+        switchTab(activeTab);
+
+        // Password visibility toggler
+        function togglePasswordVisibility(inputId, eyeId) {
+            const input = document.getElementById(inputId);
+            const eye = document.getElementById(eyeId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                eye.setAttribute('data-lucide', 'eye-off');
+            } else {
+                input.type = 'password';
+                eye.setAttribute('data-lucide', 'eye');
+            }
+            lucide.createIcons();
+        }
+
+        // Test rotating proxy helper
+        async function testRotatingProxy() {
+            const proxyInput = document.getElementById('rotating_proxy_url');
+            const resultDiv = document.getElementById('proxy-test-result');
+            const btn = document.getElementById('btn-test-proxy');
+            
+            if (!proxyInput.value.trim()) {
+                alert('Bitte trage zuerst eine Proxy-URL ein.');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin text-amber-500"></i><span>Teste...</span>`;
+            lucide.createIcons();
+
+            resultDiv.classList.add('hidden');
+            resultDiv.className = 'p-4 rounded-xl text-xs font-medium flex items-center space-x-3 mt-3';
+
+            try {
+                const formData = new FormData();
+                formData.append('rotating_proxy_url', proxyInput.value);
+
+                const response = await fetch('/admin/settings/test-rotating-proxy', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                resultDiv.classList.remove('hidden');
+
+                if (data.success) {
+                    resultDiv.classList.add('bg-emerald-500/10', 'border', 'border-emerald-500/20', 'text-emerald-400');
+                    resultDiv.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 flex-shrink-0"></i><span>Erfolgreich verbunden! IP des Proxys: <strong>${data.ip}</strong> (${data.country})</span>`;
+                } else {
+                    resultDiv.classList.add('bg-rose-500/10', 'border', 'border-rose-500/20', 'text-rose-400');
+                    resultDiv.innerHTML = `<i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i><span>Verbindung fehlgeschlagen: ${data.error}</span>`;
+                }
+            } catch (err) {
+                resultDiv.classList.remove('hidden');
+                resultDiv.classList.add('bg-rose-500/10', 'border', 'border-rose-500/20', 'text-rose-400');
+                resultDiv.innerHTML = `<i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i><span>Netzwerkfehler: ${err.message}</span>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i data-lucide="activity" class="w-4 h-4 text-emerald-400"></i><span>Proxy testen</span>`;
+                lucide.createIcons();
+            }
+        }
+    </script>
+</body>
+</html>

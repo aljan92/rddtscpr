@@ -80,45 +80,17 @@ async def web_admin_playground(
     settings = load_settings()
     return templates.TemplateResponse("web/playground.html", {"request": request, "settings": settings})
 
-@router.get("/admin/web-scraper/settings", response_class=HTMLResponse)
+@router.get("/admin/web-scraper/settings")
 async def web_admin_settings_get(
-    request: Request,
     username: str = Depends(verify_admin)
 ):
-    settings = load_settings()
-    return templates.TemplateResponse("web/settings.html", {
-        "request": request,
-        "settings": settings,
-        "web_scraper_max_workers": web_scrape_queue.max_workers
-    })
+    return RedirectResponse(url="/admin/settings?api=web", status_code=307)
 
 @router.post("/admin/web-scraper/settings")
 async def web_admin_settings_post(
-    web_scraper_max_workers: int = Form(5),
-    username: str = Depends(verify_admin),
-    db: Session = Depends(get_db)
+    username: str = Depends(verify_admin)
 ):
-    if web_scraper_max_workers < 1 or web_scraper_max_workers > 20:
-        return RedirectResponse(url="/admin/web-scraper/settings?error=Max+Workers+muss+zwischen+1+und+20+liegen.", status_code=303)
-        
-    try:
-        # In-Memory aktualisieren
-        web_scrape_queue.resize_worker_pool(web_scraper_max_workers)
-        
-        # In DB persistieren
-        setting = db.query(SystemSetting).filter(SystemSetting.key == "web_scraper_max_workers").first()
-        if setting:
-            setting.value = str(web_scraper_max_workers)
-        else:
-            setting = SystemSetting(key="web_scraper_max_workers", value=str(web_scraper_max_workers))
-            db.add(setting)
-        db.commit()
-        
-        logger.info(f"Web Scraper Max Workers aktualisiert auf {web_scraper_max_workers}")
-        return RedirectResponse(url="/admin/web-scraper/settings?success=Einstellungen+erfolgreich+gespeichert!", status_code=303)
-    except Exception as e:
-        logger.error(f"Fehler beim Speichern der Web-Scraper Max Workers in DB: {e}")
-        return RedirectResponse(url=f"/admin/web-scraper/settings?error=Interner+Fehler:+{str(e)}", status_code=303)
+    return RedirectResponse(url="/admin/settings?api=web", status_code=307)
 
 @router.get("/admin/web-scraper/queue", response_class=HTMLResponse)
 async def web_admin_queue(
@@ -128,15 +100,46 @@ async def web_admin_queue(
     status = web_scrape_queue.get_queue_status()
     return templates.TemplateResponse("web/queue.html", {
         "request": request,
+        "max_workers": web_scrape_queue.max_workers,
         "stats": status["stats"],
         "requests": status["requests"]
     })
+
+@router.post("/admin/web-scraper/queue/settings")
+async def web_admin_queue_settings(
+    max_workers: int = Form(5),
+    username: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    if max_workers < 1 or max_workers > 20:
+        return RedirectResponse(url="/admin/web-scraper/queue?error=Max+Workers+muss+zwischen+1+und+20+liegen.", status_code=303)
+    try:
+        web_scrape_queue.resize_worker_pool(max_workers)
+        setting = db.query(SystemSetting).filter(SystemSetting.key == "web_scraper_max_workers").first()
+        if setting:
+            setting.value = str(max_workers)
+        else:
+            setting = SystemSetting(key="web_scraper_max_workers", value=str(max_workers))
+            db.add(setting)
+        db.commit()
+        return RedirectResponse(url="/admin/web-scraper/queue?success=Einstellungen+erfolgreich+gespeichert!", status_code=303)
+    except Exception as e:
+        logger.error(f"Fehler beim Speichern der Queue-Einstellungen: {e}")
+        return RedirectResponse(url=f"/admin/web-scraper/queue?error=Interner+Fehler:+{str(e)}", status_code=303)
 
 @router.get("/admin/web-scraper/queue/api")
 async def web_admin_queue_api(
     username: str = Depends(verify_admin)
 ):
     return web_scrape_queue.get_queue_status()
+
+@router.get("/admin/web-scraper/rapidapi-playground", response_class=HTMLResponse)
+async def web_admin_rapidapi_playground(
+    request: Request,
+    username: str = Depends(verify_admin)
+):
+    settings = load_settings()
+    return templates.TemplateResponse("web/rapidapi_playground.html", {"request": request, "settings": settings})
 
 @router.post("/admin/web-scraper/settings/reset-stats")
 async def web_admin_settings_reset_stats(

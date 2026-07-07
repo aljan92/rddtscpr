@@ -340,29 +340,90 @@ class WebScrapeQueueManager:
 
     def get_queue_status(self) -> dict:
         """
-        Gibt detaillierte Statistiken über die Queue zurück.
+        Gibt detaillierte Statistiken über die Queue zurück analog zur Reddit Queue.
         """
-        waiting = len([r for r in self.active_requests.values() if r.status == "Wartend"])
-        scraping = len([r for r in self.active_requests.values() if r.status == "Scraping"])
+        sorted_requests = sorted(self.active_requests.values(), key=lambda r: r.created_at)
+        items = []
+        pending_count = 0
+        active_count = 0
         
-        req_list = []
-        for rid, r in list(self.active_requests.items()):
-            req_list.append({
+        for r in sorted_requests:
+            if r.status == "Wartend":
+                pending_count += 1
+            else:
+                active_count += 1
+                
+            items.append({
                 "id": r.id,
-                "url": r.url,
+                "action": "Playground" if r.is_playground else "Scrape",
+                "target": r.url,
                 "status": r.status,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-                "is_playground": r.is_playground
+                "attempts": 1,
+                "age_seconds": int((datetime.utcnow() - r.created_at).total_seconds())
             })
+            
+        current_load, max_24h_load = self.calculate_system_load()
+        avg_wait = sum(self.wait_times) / len(self.wait_times) if self.wait_times else 0.0
+        
+        # Latest 50 logs laden
+        logs_json = []
+        total_requests = 0
+        success_requests = 0
+        client_error_requests = 0
+        api_error_requests = 0
+        timeout_requests = 0
+        success_rate = 100.0
+        avg_duration_ms = 0
+        
+        try:
+            with SessionLocal() as db:
+                logs = db.query(WebScraperRequestLog).order_by(WebScraperRequestLog.timestamp.desc()).limit(50).all()
+                for log in logs:
+                    logs_json.append({
+                        "timestamp": log.timestamp.strftime('%d.%m.%Y %H:%M:%S') if log.timestamp else '-',
+                        "endpoint": "/v1/web/scrape",
+                        "target": log.url,
+                        "method_used": "STEALTH" if log.stealth_mode_active else "NORMAL",
+                        "response_time_ms": log.response_time_ms,
+                        "status_code": log.status_code,
+                        "error_message": log.error_message or ""
+                    })
+                    
+                total_requests = db.query(WebScraperRequestLog).count()
+                success_requests = db.query(WebScraperRequestLog).filter(WebScraperRequestLog.status_code == 200).count()
+                client_error_requests = db.query(WebScraperRequestLog).filter(WebScraperRequestLog.status_code.between(400, 498)).count()
+                timeout_requests = db.query(WebScraperRequestLog).filter(WebScraperRequestLog.status_code == 499).count()
+                api_error_requests = db.query(WebScraperRequestLog).filter(WebScraperRequestLog.status_code >= 500).count()
+                
+                denom = success_requests + api_error_requests + timeout_requests
+                success_rate = (success_requests / denom * 100) if denom > 0 else 100.0
+                
+                avg_duration = db.query(WebScraperRequestLog).filter(WebScraperRequestLog.status_code == 200)
+                if success_requests > 0:
+                    durations = [l.response_time_ms for l in avg_duration.all()]
+                    avg_duration_ms = int(sum(durations) / len(durations)) if durations else 0
+        except Exception as e:
+            logger.error(f"Fehler beim Laden der API-Statistiken für Web-Queue: {e}")
             
         return {
             "stats": {
-                "waiting": waiting,
-                "scraping": scraping,
-                "total_active": waiting + scraping,
+                "total": len(items),
+                "pending": pending_count,
+                "active": active_count,
+                "current_load": round(current_load, 1),
+                "max_24h_load": round(max_24h_load, 1),
+                "avg_wait_seconds": round(avg_wait, 1),
+                "global_total": total_requests,
+                "global_success_rate": f"{success_rate:.1f}%",
+                "global_api_errors": api_error_requests,
+                "global_client_errors": client_error_requests,
+                "global_timeouts": timeout_requests,
+                "global_avg_duration_ms": avg_duration_ms,
                 "max_workers": self.max_workers
             },
-            "requests": req_list
+            "requests": items,
+            "logs": logs_json,
+            "sparkline": list(self.sparkline_history)
         }
 
     def resize_worker_pool(self, new_size: int):

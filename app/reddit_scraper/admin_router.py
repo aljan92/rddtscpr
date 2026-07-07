@@ -621,52 +621,103 @@ async def diagnose_queue(
 @router.get("/admin/settings", response_class=HTMLResponse)
 async def admin_settings_get(
     request: Request,
-    username: str = Depends(verify_admin)
+    api: str = "reddit",
+    username: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
 ):
     settings = load_settings()
-    return templates.TemplateResponse("reddit/settings.html", {
+    
+    # Load max workers from DB
+    web_scraper_max_workers = 5
+    setting = db.query(SystemSetting).filter(SystemSetting.key == "web_scraper_max_workers").first()
+    if setting:
+        web_scraper_max_workers = int(setting.value)
+        
+    return templates.TemplateResponse("settings.html", {
         "request": request,
         "settings": settings,
-        "rotating_proxy_url": scrape_queue.rotating_proxy_url
+        "rotating_proxy_url": scrape_queue.rotating_proxy_url,
+        "cooldown_seconds": scrape_queue.cooldown_seconds,
+        "cooldown_mode": scrape_queue.cooldown_mode,
+        "max_accountless_sessions": scrape_queue.max_accountless_sessions,
+        "web_scraper_max_workers": web_scraper_max_workers,
+        "api": api
     })
 
 @router.post("/admin/settings")
 async def admin_settings_post(
+    api: str = "reddit",
     rapidapi_proxy_secret: str = Form(None),
     sandbox_mode: bool = Form(False),
     rapidapi_key: str = Form(None),
     rapidapi_host: str = Form(None),
     rotating_proxy_url: str = Form(None),
     evomi_api_key: str = Form(None),
+    # Reddit specific queue settings
+    cooldown_seconds: float = Form(3.0),
+    cooldown_mode: str = Form("auto"),
+    max_accountless_sessions: int = Form(20),
+    # Web Scraper specific
+    web_rapidapi_proxy_secret: str = Form(None),
+    web_rapidapi_key: str = Form(None),
+    web_rapidapi_host: str = Form(None),
+    web_scraper_max_workers: int = Form(5),
     username: str = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
+    # 1. Update JSON settings file
     settings = {
         "rapidapi_proxy_secret": (rapidapi_proxy_secret or "").strip(),
         "sandbox_mode": sandbox_mode,
         "rapidapi_key": (rapidapi_key or "").strip(),
         "rapidapi_host": (rapidapi_host or "").strip(),
-        "evomi_api_key": (evomi_api_key or "").strip()
+        "evomi_api_key": (evomi_api_key or "").strip(),
+        "web_rapidapi_proxy_secret": (web_rapidapi_proxy_secret or "").strip(),
+        "web_rapidapi_key": (web_rapidapi_key or "").strip(),
+        "web_rapidapi_host": (web_rapidapi_host or "").strip(),
     }
     save_settings(settings)
     
+    # 2. Update rotating proxy in DB & scrape_queue (Reddit)
     if rotating_proxy_url is not None:
         formatted_proxy = format_proxy_string(rotating_proxy_url) or ""
         scrape_queue.rotating_proxy_url = formatted_proxy
-        try:
-            db_setting = db.query(SystemSetting).filter(SystemSetting.key == "rotating_proxy_url").first()
-            if db_setting:
-                db_setting.value = formatted_proxy
-            else:
-                db_setting = SystemSetting(key="rotating_proxy_url", value=formatted_proxy)
-                db.add(db_setting)
-            db.commit()
-            logger.info(f"Rotating-Proxy-URL in DB aktualisiert: {formatted_proxy}")
-        except Exception as e:
-            logger.error(f"Fehler beim Speichern von rotating_proxy_url in DB: {e}")
+        db_setting = db.query(SystemSetting).filter(SystemSetting.key == "rotating_proxy_url").first()
+        if db_setting:
+            db_setting.value = formatted_proxy
+        else:
+            db_setting = SystemSetting(key="rotating_proxy_url", value=formatted_proxy)
+            db.add(db_setting)
             
-    logger.info(f"System-Settings aktualisiert: Sandbox Mode = {sandbox_mode}")
-    return RedirectResponse(url="/admin/settings?success=Einstellungen+erfolgreich+gespeichert!", status_code=303)
+    # 3. Update Reddit Queue settings in DB & scrape_queue
+    scrape_queue.cooldown_mode = cooldown_mode
+    if cooldown_mode == "fixed":
+        scrape_queue.cooldown_seconds = cooldown_seconds
+    scrape_queue.max_accountless_sessions = max_accountless_sessions
+    
+    for key, val in [("cooldown_seconds", str(cooldown_seconds)), 
+                     ("cooldown_mode", cooldown_mode), 
+                     ("max_accountless_sessions", str(max_accountless_sessions))]:
+        db_s = db.query(SystemSetting).filter(SystemSetting.key == key).first()
+        if db_s:
+            db_s.value = val
+        else:
+            db_s = SystemSetting(key=key, value=val)
+            db.add(db_s)
+            
+    # 4. Update Web Scraper max workers in DB & web_scrape_queue
+    from app.web_scraper.queue_manager import web_scrape_queue
+    web_scrape_queue.resize_worker_pool(web_scraper_max_workers)
+    db_w = db.query(SystemSetting).filter(SystemSetting.key == "web_scraper_max_workers").first()
+    if db_w:
+        db_w.value = str(web_scraper_max_workers)
+    else:
+        db_w = SystemSetting(key="web_scraper_max_workers", value=str(web_scraper_max_workers))
+        db.add(db_w)
+        
+    db.commit()
+    logger.info(f"System settings updated via unified form. API context: {api}")
+    return RedirectResponse(url=f"/admin/settings?api={api}&success=Einstellungen+erfolgreich+gespeichert!", status_code=303)
 
 @router.post("/admin/settings/test-rotating-proxy")
 async def test_rotating_proxy(

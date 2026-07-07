@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Scraper - RapidAPI Playground</title>
+    <!-- Outfit Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        scraper: {
+                            emerald: '#10B981',
+                            dark: '#0B1426',
+                            card: '#152238',
+                            border: '#1F2D44'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            background-color: #0B1426;
+            background-image: radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.05) 0%, transparent 40%),
+                              radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 40%);
+        }
+        .glass-card {
+            background: rgba(21, 34, 56, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(31, 45, 68, 0.8);
+        }
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0B1426;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1F2D44;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #10B981;
+        }
+    </style>
+</head>
+<body class="text-slate-200 min-h-screen font-sans flex flex-col">
+    <!-- Navbar -->
+    <nav class="glass-card sticky top-0 z-50 border-b border-scraper-border px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="bg-scraper-emerald p-2 rounded-xl text-white shadow-lg shadow-scraper-emerald/20">
+                <i data-lucide="globe" class="w-6 h-6 animate-spin" style="animation-duration: 10s;"></i>
+            </div>
+            <div>
+                <div class="flex items-center space-x-2">
+                    <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                        <span>RapidAPI Playground</span>
+                        <span class="text-[10px] bg-scraper-emerald/10 text-scraper-emerald border border-scraper-emerald/20 px-2 py-0.5 rounded uppercase font-semibold">Gateway Test</span>
+                    </h1>
+                    <a href="/admin/dashboard" class="text-[10px] font-bold tracking-wider uppercase bg-orange-500/10 text-orange-500 border border-orange-500/20 px-2 py-0.5 rounded-full hover:bg-orange-500/20 transition-all">
+                        To Reddit Scraper
+                    </a>
+                </div>
+                <p class="text-xs text-slate-400">Teste deine API live über das offizielle RapidAPI-Netzwerk</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <!-- Evomi Bandwidth Badge -->
+            <div id="evomi-bandwidth-badge" class="hidden items-center space-x-1.5 text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
+                <i data-lucide="wifi" class="w-3.5 h-3.5"></i>
+                <span id="evomi-bandwidth-text">Evomi: -- GB</span>
+            </div>
+            <a href="/admin/web-scraper/dashboard" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="/admin/web-scraper/queue" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="list-ordered" class="w-4 h-4"></i>
+                <span>Queue</span>
+            </a>
+            <a href="/admin/web-scraper/playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="play" class="w-4 h-4"></i>
+                <span>Playground</span>
+            </a>
+            <a href="/admin/web-scraper/rapidapi-playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg bg-scraper-emerald/10 text-scraper-emerald border border-scraper-emerald/20 hover:bg-scraper-emerald/20 transition-all duration-200">
+                <i data-lucide="globe" class="w-4 h-4"></i>
+                <span>RapidAPI Playground</span>
+            </a>
+            <a href="/admin/web-scraper/settings" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="settings" class="w-4 h-4"></i>
+                <span>Settings</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow p-6 max-w-7xl mx-auto w-full flex flex-col lg:flex-row gap-6">
+        <!-- Input Form Card -->
+        <div class="glass-card p-6 rounded-2xl w-full lg:w-1/3 flex flex-col justify-between">
+            <div class="space-y-6">
+                <!-- Credentials Warn Banner if missing -->
+                {% set key = settings.web_rapidapi_key or settings.rapidapi_key %}
+                {% set host = settings.web_rapidapi_host or settings.rapidapi_host %}
+                {% if not key or not host %}
+                <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs space-y-1.5">
+                    <p class="font-bold flex items-center gap-1.5">
+                        <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                        <span>Zugangsdaten fehlen</span>
+                    </p>
+                    <p class="text-[11px] leading-relaxed">
+                        Hinterlege zuerst deinen <code class="text-white font-mono bg-black/30 px-1 py-0.5 rounded">X-RapidAPI-Key</code> und <code class="text-white font-mono bg-black/30 px-1 py-0.5 rounded">X-RapidAPI-Host</code> in den <a href="/admin/web-scraper/settings" class="underline text-amber-400 hover:text-amber-300">Settings</a>, um hier live über RapidAPI zu testen.
+                    </p>
+                </div>
+                {% endif %}
+
+                <div>
+                    <h2 class="text-lg font-semibold text-white mb-2 flex items-center space-x-2">
+                        <i data-lucide="sliders" class="text-scraper-emerald w-5 h-5"></i>
+                        <span>API-Parameter</span>
+                    </h2>
+                    <p class="text-xs text-slate-400">Verwende deine RapidAPI Subskription-Daten.</p>
+                </div>
+
+                <!-- Simulation Plan Selection -->
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Simulation Abonnement</label>
+                        <span class="text-[10px] bg-slate-800 text-slate-400 border border-scraper-border px-1.5 py-0.2 rounded font-mono">X-RapidAPI-Subscription</span>
+                    </div>
+                    <select id="sim-subscription" class="w-full bg-scraper-dark border border-scraper-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-scraper-emerald transition-all duration-200">
+                        <option value="Basic">Basic (Free-Features)</option>
+                        <option value="Pro" selected>Pro (Zusatz-Features)</option>
+                        <option value="Ultra">Ultra (Premium)</option>
+                    </select>
+                    <p class="text-[10px] text-slate-500">RapidAPI leitet diesen String im Header an deinen VPS weiter.</p>
+                </div>
+
+                <!-- Endpoint Selection -->
+                <div class="space-y-2">
+                    <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Endpunkt</label>
+                    <select id="endpoint-select" class="w-full bg-scraper-dark border border-scraper-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-scraper-emerald transition-all duration-200">
+                        <option value="scrape">Scrape URL (POST /v1/web/scrape)</option>
+                        <option value="status">Job Status (GET /v1/web/job-status/{job_id})</option>
+                    </select>
+                </div>
+
+                <!-- Scrape Form fields -->
+                <div id="scrape-fields" class="space-y-4">
+                    <div class="space-y-2">
+                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Ziel-URL</label>
+                        <input type="text" id="url-input" placeholder="https://example.com" value="https://example.com" class="w-full bg-scraper-dark border border-scraper-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-scraper-emerald transition-all duration-200">
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-2">
+                            <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Übertragungsmodus</label>
+                            <select id="delivery-mode" class="w-full bg-scraper-dark border border-scraper-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-scraper-emerald transition-all duration-200">
+                                <option value="direct" selected>direct (Synchron)</option>
+                                <option value="webhook">webhook (Asynchron)</option>
+                                <option value="both">both (Beides)</option>
+                            </select>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Chunking (LLM)</label>
+                            <select id="chunk-size" class="w-full bg-scraper-dark border border-scraper-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-scraper-emerald transition-all duration-200">
+                                <option value="" selected>Kein Chunking</option>
+                                <option value="500">500 Zeichen</option>
+                                <option value="1000">1000 Zeichen</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2 hidden" id="webhook-container">
+                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Webhook-URL</label>
+                        <input type="text" id="webhook-url-input" placeholder="https://yourdomain.com/webhook" class="w-full bg-scraper-dark border border-scraper-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-scraper-emerald transition-all duration-200">
+                    </div>
+
+                    <div class="space-y-3 pt-2">
+                        <div class="flex items-center space-x-2.5">
+                            <input type="checkbox" id="block-media" checked class="w-4.5 h-4.5 bg-scraper-dark border border-scraper-border rounded accent-scraper-emerald focus:ring-scraper-emerald">
+                            <label for="block-media" class="text-xs font-semibold text-slate-400 cursor-pointer select-none hover:text-slate-300">Medien blockieren (schneller)</label>
+                        </div>
+                        <div class="flex items-center space-x-2.5">
+                            <input type="checkbox" id="include-screenshot" class="w-4.5 h-4.5 bg-scraper-dark border border-scraper-border rounded accent-scraper-emerald focus:ring-scraper-emerald">
+                            <label for="include-screenshot" class="text-xs font-semibold text-slate-400 cursor-pointer select-none hover:text-slate-300">Screenshot anfordern</label>
+                        </div>
+                        <div class="flex items-center space-x-2.5">
+                            <input type="checkbox" id="page-crawling" class="w-4.5 h-4.5 bg-scraper-dark border border-scraper-border rounded accent-scraper-emerald focus:ring-scraper-emerald">
+                            <label for="page-crawling" class="text-xs font-semibold text-slate-400 cursor-pointer select-none hover:text-slate-300">Unterseiten crawlen</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Job Status Form fields -->
+                <div id="status-fields" class="space-y-4 hidden">
+                    <div class="space-y-2">
+                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Job-ID</label>
+                        <input type="text" id="job-id-input" placeholder="z.B. job_abcd1234" class="w-full bg-scraper-dark border border-scraper-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-scraper-emerald transition-all duration-200">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Submit Button -->
+            <button id="send-request-btn" {% if not key or not host %}disabled{% endif %} class="w-full mt-6 flex items-center justify-center space-x-2 bg-scraper-emerald hover:bg-emerald-400 text-scraper-dark font-bold py-3 px-4 rounded-xl transition-all duration-300 shadow-lg shadow-scraper-emerald/20 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-30 disabled:pointer-events-none">
+                <i data-lucide="globe" id="btn-icon" class="w-5 h-5"></i>
+                <span id="btn-text">Über RapidAPI abfragen</span>
+            </button>
+        </div>
+
+        <!-- Result View Card -->
+        <div class="glass-card p-6 rounded-2xl w-full lg:w-2/3 flex flex-col">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-white flex items-center space-x-2">
+                        <i data-lucide="braces" class="text-scraper-emerald w-5 h-5"></i>
+                        <span>Live Gateway Response</span>
+                    </h2>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span id="response-status" class="hidden text-xs font-semibold px-2.5 py-1 rounded-full"></span>
+                    <span id="response-time" class="hidden text-xs text-slate-400 font-mono"></span>
+                    <button id="copy-btn" class="hidden items-center space-x-1 text-xs text-slate-400 hover:text-white transition-all duration-200">
+                        <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                        <span>Kopieren</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Pre display area -->
+            <div class="flex-grow bg-slate-950 border border-scraper-border rounded-xl p-4 overflow-y-auto font-mono text-xs text-scraper-emerald min-h-[400px] max-h-[650px] flex flex-col justify-between" id="response-display-container">
+                <pre class="whitespace-pre-wrap select-all text-emerald-400" id="json-output">// Hinterlege deine RapidAPI Credentials und drücke "Über RapidAPI abfragen" ...</pre>
+                
+                <!-- Spinner Overlay -->
+                <div id="loading-spinner" class="hidden flex-col items-center justify-center space-y-4 my-auto py-12">
+                    <div class="w-12 h-12 border-4 border-scraper-emerald border-t-transparent rounded-full animate-spin"></div>
+                    <div class="text-center">
+                        <p class="text-white font-semibold">Führe Request über RapidAPI Gateway aus...</p>
+                        <p class="text-xs text-slate-500 mt-1">
+                            Die Anfrage läuft jetzt verschlüsselt über das offizielle RapidAPI-System.<br>
+                            Dein VPS empfängt und validiert die Anfrage und gibt die Scrape-Ergebnisse zurück.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-6 border-t border-scraper-border text-center text-xs text-slate-500">
+        <p>&copy; 2026 Web Data Extraction Suite. Alle Rechte vorbehalten.</p>
+    </footer>
+
+    <script>
+        // Init Lucide Icons
+        lucide.createIcons();
+
+        // Evomi Bandbreite abfragen
+        fetch('/admin/web-scraper/evomi-balance')
+            .then(res => res.json())
+            .then(data => {
+                const badge = document.getElementById('evomi-bandwidth-badge');
+                const text = document.getElementById('evomi-bandwidth-text');
+                if (data.status === 'success' && data.remaining !== null) {
+                    text.textContent = `Evomi: ${data.remaining} GB`;
+                    badge.classList.remove('hidden');
+                    badge.classList.add('flex');
+                    lucide.createIcons();
+                }
+            })
+            .catch(err => console.error(err));
+
+        const endpointSelect = document.getElementById('endpoint-select');
+        const scrapeFields = document.getElementById('scrape-fields');
+        const statusFields = document.getElementById('status-fields');
+        const deliveryMode = document.getElementById('delivery-mode');
+        const webhookContainer = document.getElementById('webhook-container');
+        const sendRequestBtn = document.getElementById('send-request-btn');
+        const btnIcon = document.getElementById('btn-icon');
+        const btnText = document.getElementById('btn-text');
+        const jsonOutput = document.getElementById('json-output');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const copyBtn = document.getElementById('copy-btn');
+        const responseStatus = document.getElementById('response-status');
+        const responseTime = document.getElementById('response-time');
+        const simSubscription = document.getElementById('sim-subscription');
+
+        // Toggle Fields based on Endpoint Selection
+        endpointSelect.addEventListener('change', function() {
+            if (this.value === 'scrape') {
+                scrapeFields.classList.remove('hidden');
+                statusFields.classList.add('hidden');
+            } else {
+                scrapeFields.classList.add('hidden');
+                statusFields.classList.remove('hidden');
+            }
+        });
+
+        // Toggle Webhook Container
+        deliveryMode.addEventListener('change', function() {
+            if (this.value === 'webhook' || this.value === 'both') {
+                webhookContainer.classList.remove('hidden');
+            } else {
+                webhookContainer.classList.add('hidden');
+            }
+        });
+
+        // Send API Request
+        sendRequestBtn.addEventListener('click', async function() {
+            // UI State loading
+            sendRequestBtn.disabled = true;
+            loadingSpinner.classList.remove('hidden');
+            jsonOutput.classList.add('hidden');
+            copyBtn.classList.add('hidden');
+            responseStatus.classList.add('hidden');
+            responseTime.classList.add('hidden');
+            btnText.innerText = 'Sende...';
+            btnIcon.setAttribute('data-lucide', 'loader-2');
+            btnIcon.classList.add('animate-spin');
+            lucide.createIcons();
+
+            const endpoint = endpointSelect.value;
+            let path = '';
+            let method = 'GET';
+            let body = null;
+            
+            if (endpoint === 'scrape') {
+                path = '/v1/web/scrape';
+                method = 'POST';
+                
+                const response_filters = {
+                    include_markdown: true,
+                    include_html: document.getElementById('include-screenshot').checked ? false : false, // defaults
+                    include_extracted_data: true,
+                    include_screenshot: document.getElementById('include-screenshot').checked
+                };
+                
+                body = JSON.stringify({
+                    url: document.getElementById('url-input').value,
+                    delivery_mode: deliveryMode.value,
+                    webhook_url: (deliveryMode.value === 'webhook' || deliveryMode.value === 'both') ? document.getElementById('webhook-url-input').value : null,
+                    response_filters: response_filters,
+                    block_media: document.getElementById('block-media').checked,
+                    page_crawling: document.getElementById('page-crawling').checked,
+                    max_crawl_depth: 1,
+                    max_crawl_pages: 5,
+                    chunk_size: document.getElementById('chunk-size').value ? parseInt(document.getElementById('chunk-size').value) : null,
+                    chunk_overlap: document.getElementById('chunk-size').value ? 100 : null
+                });
+            } else {
+                const jobId = encodeURIComponent(document.getElementById('job-id-input').value);
+                path = `/v1/web/job-status/${jobId}`;
+                method = 'GET';
+            }
+
+            // RapidAPI-Gateway URL zusammenbauen
+            const rapidHost = "{{ settings.web_rapidapi_host or settings.rapidapi_host }}";
+            const rapidKey = "{{ settings.web_rapidapi_key or settings.rapidapi_key }}";
+            const targetUrl = `https://${rapidHost}${path}`;
+
+            const startTime = performance.now();
+
+            try {
+                const headers = {
+                    "X-RapidAPI-Key": rapidKey,
+                    "X-RapidAPI-Host": rapidHost,
+                    "X-RapidAPI-Subscription": simSubscription.value,
+                    "Content-Type": "application/json"
+                };
+
+                const fetchOptions = {
+                    method: method,
+                    headers: headers
+                };
+                if (body) {
+                    fetchOptions.body = body;
+                }
+
+                // Request direkt an das RapidAPI Gateway schicken
+                const response = await fetch(targetUrl, fetchOptions);
+                const status = response.status;
+                const data = await response.json();
+                const duration = Math.round(performance.now() - startTime);
+
+                // Show status
+                responseStatus.classList.remove('hidden');
+                responseStatus.innerText = status === 200 ? '200 OK' : `${status} Error`;
+                if (status === 200) {
+                    responseStatus.className = 'text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+                    jsonOutput.className = 'whitespace-pre-wrap select-all text-emerald-400';
+                } else {
+                    responseStatus.className = 'text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20';
+                    jsonOutput.className = 'whitespace-pre-wrap select-all text-rose-400';
+                }
+
+                responseTime.classList.remove('hidden');
+                responseTime.innerText = `${duration} ms`;
+
+                jsonOutput.innerText = JSON.stringify(data, null, 2);
+                copyBtn.classList.remove('hidden');
+
+            } catch (err) {
+                responseStatus.classList.remove('hidden');
+                responseStatus.innerText = 'RapidAPI Gateway Error';
+                responseStatus.className = 'text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20';
+                jsonOutput.innerText = `Fehler bei der Verbindung über das RapidAPI Gateway: ${err.message}\n\nStelle sicher, dass deine API auf RapidAPI bereits veröffentlicht (oder als Entwurf freigegeben) ist und deine VPS-IP vom Hostinger-Server erreichbar ist.`;
+            } finally {
+                // UI State restore
+                sendRequestBtn.disabled = false;
+                loadingSpinner.classList.add('hidden');
+                jsonOutput.classList.remove('hidden');
+                btnText.innerText = 'Über RapidAPI abfragen';
+                btnIcon.setAttribute('data-lucide', 'globe');
+                btnIcon.classList.remove('animate-spin');
+                lucide.createIcons();
+            }
+        });
+
+        // Copy JSON to Clipboard
+        copyBtn.addEventListener('click', function() {
+            const textToCopy = jsonOutput.innerText;
+            const span = this.querySelector('span');
+            const origText = span.innerText;
+
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    span.innerText = 'Kopiert!';
+                    setTimeout(() => { span.innerText = origText; }, 2000);
+                });
+            } else {
+                const textArea = document.createElement("textarea");
+                textArea.value = textToCopy;
+                textArea.style.position = "fixed";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                try {
+                    const successful = document.execCommand('copy');
+                    if (successful) {
+                        span.innerText = 'Kopiert!';
+                    } else {
+                        span.innerText = 'Fehler!';
+                    }
+                } catch (err) {
+                    span.innerText = 'Fehler!';
+                }
+                document.body.removeChild(textArea);
+                setTimeout(() => { span.innerText = origText; }, 2000);
+            }
+        });
+    </script>
+</body>
+</html>
