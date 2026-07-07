@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Scraper - Warteschlange</title>
+    <!-- Outfit Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        scraper: {
+                            emerald: '#10B981',
+                            dark: '#0B1426',
+                            card: '#152238',
+                            border: '#1F2D44'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            background-color: #0B1426;
+            background-image: radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.05) 0%, transparent 40%),
+                              radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 40%);
+        }
+        .glass-card {
+            background: rgba(21, 34, 56, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(31, 45, 68, 0.8);
+        }
+    </style>
+</head>
+<body class="text-slate-200 min-h-screen font-sans flex flex-col">
+    <!-- Navbar -->
+    <nav class="glass-card sticky top-0 z-50 border-b border-scraper-border px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="bg-scraper-emerald p-2 rounded-xl text-white shadow-lg shadow-scraper-emerald/20 animate-pulse">
+                <i data-lucide="globe" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <div class="flex items-center space-x-2">
+                    <h1 class="text-xl font-bold tracking-tight text-white">Web Scraper</h1>
+                    <a href="/admin/dashboard" class="text-[10px] font-bold tracking-wider uppercase bg-orange-500/10 text-orange-500 border border-orange-500/20 px-2 py-0.5 rounded-full hover:bg-orange-500/20 transition-all">
+                        To Reddit Scraper
+                    </a>
+                </div>
+                <p class="text-xs text-slate-400">Agentic RAG Engine v1.0.0</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <div id="evomi-bandwidth-badge" class="hidden items-center space-x-1.5 text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
+                <i data-lucide="wifi" class="w-3.5 h-3.5"></i>
+                <span id="evomi-bandwidth-text">Evomi: -- GB</span>
+            </div>
+            <a href="/admin/web-scraper/dashboard" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="/admin/web-scraper/queue" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg bg-scraper-emerald/10 text-scraper-emerald border border-scraper-emerald/20 hover:bg-scraper-emerald/20 transition-all duration-200">
+                <i data-lucide="list-ordered" class="w-4 h-4"></i>
+                <span>Queue</span>
+            </a>
+            <a href="/admin/web-scraper/playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="play" class="w-4 h-4"></i>
+                <span>Playground</span>
+            </a>
+            <a href="/admin/web-scraper/settings" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="settings" class="w-4 h-4"></i>
+                <span>Settings</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow p-6 max-w-7xl mx-auto w-full space-y-6">
+        <!-- Load Grid Info -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- Queue Load Stats -->
+            <div class="glass-card p-6 rounded-2xl border border-scraper-border/60 flex flex-col justify-between">
+                <div>
+                    <span class="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-1">Aktive Scraping Jobs</span>
+                    <span class="text-3xl font-bold text-emerald-400" id="stats-active">{{ stats.scraping }}</span>
+                </div>
+                <div class="mt-4 text-xs text-slate-500">
+                    Browser-Instanzen, die derzeit Webseiten rendern.
+                </div>
+            </div>
+            
+            <div class="glass-card p-6 rounded-2xl border border-scraper-border/60 flex flex-col justify-between">
+                <div>
+                    <span class="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-1">Wartende Anfragen (Queue)</span>
+                    <span class="text-3xl font-bold text-slate-300" id="stats-waiting">{{ stats.waiting }}</span>
+                </div>
+                <div class="mt-4 text-xs text-slate-500">
+                    In Warteschlange stehende Anfragen vor Worker-Verarbeitung.
+                </div>
+            </div>
+
+            <div class="glass-card p-6 rounded-2xl border border-scraper-border/60 flex flex-col justify-between">
+                <div>
+                    <span class="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-1">Max. Parallelität</span>
+                    <span class="text-3xl font-bold text-blue-400" id="stats-max-workers">{{ stats.max_workers }}</span>
+                </div>
+                <div class="mt-4 text-xs text-slate-500">
+                    Konfigurierte Anzahl paralleler Scrape-Worker.
+                </div>
+            </div>
+        </div>
+
+        <!-- Real-time Queue Item List -->
+        <div class="glass-card rounded-2xl overflow-hidden flex flex-col">
+            <div class="px-6 py-5 border-b border-scraper-border flex items-center justify-between bg-scraper-card/30">
+                <div>
+                    <h2 class="text-lg font-bold text-white">Aktuelle Requests in der Queue</h2>
+                    <p class="text-xs text-slate-400">Automatische Live-Aktualisierung alle 2 Sekunden</p>
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-scraper-border text-[10px] uppercase tracking-wider text-slate-400 font-semibold bg-scraper-dark/30">
+                            <th class="px-6 py-4">Job-ID</th>
+                            <th class="px-6 py-4">URL</th>
+                            <th class="px-6 py-4">Eingereicht (UTC)</th>
+                            <th class="px-6 py-4">Status</th>
+                            <th class="px-6 py-4">Kontext</th>
+                        </tr>
+                    </thead>
+                    <tbody id="queue-table-body" class="divide-y divide-scraper-border text-sm text-slate-300">
+                        {% for r in requests %}
+                        <tr class="hover:bg-slate-800/30 transition-colors">
+                            <td class="px-6 py-4 font-mono text-xs text-slate-400">
+                                {{ r.id }}
+                            </td>
+                            <td class="px-6 py-4 max-w-md truncate" title="{{ r.url }}">
+                                {{ r.url }}
+                            </td>
+                            <td class="px-6 py-4 text-xs font-mono text-slate-400">
+                                {{ r.created_at }}
+                            </td>
+                            <td class="px-6 py-4">
+                                {% if r.status == 'Scraping' %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">
+                                    Scraping...
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20">
+                                    Wartend
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 text-xs text-slate-500">
+                                {% if r.is_playground %}
+                                Playground
+                                {% else %}
+                                API
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="px-6 py-12 text-center text-slate-500">
+                                Keine aktiven Anfragen in der Queue.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="glass-card mt-auto border-t border-scraper-border px-6 py-4 text-center text-xs text-slate-500">
+        Web Scraper Dashboard &copy; 2026. Made with Playwright, Evomi & FastAPI.
+    </footer>
+
+    <script>
+        lucide.createIcons();
+
+        // Evomi Bandbreite abfragen
+        async function updateEvomiBandwidth() {
+            try {
+                const res = await fetch("/admin/web-scraper/evomi-balance");
+                const data = await res.json();
+                const badge = document.getElementById("evomi-bandwidth-badge");
+                const text = document.getElementById("evomi-bandwidth-text");
+                
+                if (data.status === "success" && data.remaining !== null) {
+                    text.innerText = "Evomi: " + data.remaining + " GB";
+                    badge.classList.remove("hidden");
+                    badge.classList.add("flex");
+                } else {
+                    badge.classList.add("hidden");
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // Real-time Queue updates
+        async function refreshQueueData() {
+            try {
+                const res = await fetch("/admin/web-scraper/queue/api");
+                const data = await res.json();
+                
+                // Update stats
+                document.getElementById("stats-active").innerText = data.stats.scraping;
+                document.getElementById("stats-waiting").innerText = data.stats.waiting;
+                document.getElementById("stats-max-workers").innerText = data.stats.max_workers;
+                
+                // Update table
+                const tbody = document.getElementById("queue-table-body");
+                if (data.requests.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="px-6 py-12 text-center text-slate-500">
+                                Keine aktiven Anfragen in der Queue.
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    tbody.innerHTML = data.requests.map(r => {
+                        const statusBadge = r.status === 'Scraping' 
+                            ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">Scraping...</span>`
+                            : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20">Wartend</span>`;
+                            
+                        const dateStr = r.created_at ? r.created_at.substring(0, 19).replace('T', ' ') : '-';
+                        const contextStr = r.is_playground ? 'Playground' : 'API';
+                        
+                        return `
+                            <tr class="hover:bg-slate-800/30 transition-colors">
+                                <td class="px-6 py-4 font-mono text-xs text-slate-400">${r.id}</td>
+                                <td class="px-6 py-4 max-w-md truncate" title="${r.url}">${r.url}</td>
+                                <td class="px-6 py-4 text-xs font-mono text-slate-400">${dateStr}</td>
+                                <td class="px-6 py-4">${statusBadge}</td>
+                                <td class="px-6 py-4 text-xs text-slate-500">${contextStr}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+                
+                lucide.createIcons();
+            } catch (e) {
+                console.error("Queue refresh failed:", e);
+            }
+        }
+
+        updateEvomiBandwidth();
+        setInterval(refreshQueueData, 2000); // Alle 2 Sekunden refreshen
+    </script>
+</body>
+</html>

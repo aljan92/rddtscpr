@@ -57,8 +57,36 @@ class SystemSetting(Base):
     value = Column(String(255), nullable=False)
 
 
+class WebScraperJob(Base):
+    __tablename__ = "web_scraper_jobs"
+
+    id = Column(String(100), primary_key=True, index=True)
+    url = Column(Text, nullable=False)
+    delivery_mode = Column(String(20), nullable=False)  # "direct", "webhook", "both"
+    status = Column(String(50), default="Wartend")  # "Wartend", "Scraping", "Erfolgreich", "Fehlgeschlagen"
+    result = Column(Text, nullable=True)  # JSON text
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+
+class WebScraperRequestLog(Base):
+    __tablename__ = "web_scraper_request_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    url = Column(Text, nullable=False)
+    status_code = Column(Integer, nullable=False)
+    response_time_ms = Column(Integer, nullable=False)
+    proxy_used = Column(String(255), nullable=True)
+    stealth_mode_active = Column(Boolean, default=False)
+    error_message = Column(Text, nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
+    # Ensure screenshots folder exists
+    os.makedirs("./app/data/screenshots", exist_ok=True)
     # Datenbank-Migration: Spalten hinzufügen (einzelne Transaktionen pro Spalte für PostgreSQL-Toleranz)
     from sqlalchemy import text
     try:
@@ -83,3 +111,4 @@ def get_db():
         yield db
     finally:
         db.close()
+

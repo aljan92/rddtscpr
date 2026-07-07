@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Scraper - Playground</title>
+    <!-- Outfit Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        scraper: {
+                            emerald: '#10B981',
+                            dark: '#0B1426',
+                            card: '#152238',
+                            border: '#1F2D44'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            background-color: #0B1426;
+            background-image: radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.05) 0%, transparent 40%),
+                              radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 40%);
+        }
+        .glass-card {
+            background: rgba(21, 34, 56, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(31, 45, 68, 0.8);
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0B1426;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1F2D44;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #10B981;
+        }
+    </style>
+</head>
+<body class="text-slate-200 min-h-screen font-sans flex flex-col">
+    <!-- Navbar -->
+    <nav class="glass-card sticky top-0 z-50 border-b border-scraper-border px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="bg-scraper-emerald p-2 rounded-xl text-white shadow-lg shadow-scraper-emerald/20 animate-pulse">
+                <i data-lucide="globe" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <div class="flex items-center space-x-2">
+                    <h1 class="text-xl font-bold tracking-tight text-white">Web Scraper</h1>
+                    <a href="/admin/dashboard" class="text-[10px] font-bold tracking-wider uppercase bg-orange-500/10 text-orange-500 border border-orange-500/20 px-2 py-0.5 rounded-full hover:bg-orange-500/20 transition-all">
+                        To Reddit Scraper
+                    </a>
+                </div>
+                <p class="text-xs text-slate-400">Agentic RAG Engine v1.0.0</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <div id="evomi-bandwidth-badge" class="hidden items-center space-x-1.5 text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
+                <i data-lucide="wifi" class="w-3.5 h-3.5"></i>
+                <span id="evomi-bandwidth-text">Evomi: -- GB</span>
+            </div>
+            <a href="/admin/web-scraper/dashboard" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="/admin/web-scraper/queue" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="list-ordered" class="w-4 h-4"></i>
+                <span>Queue</span>
+            </a>
+            <a href="/admin/web-scraper/playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg bg-scraper-emerald/10 text-scraper-emerald border border-scraper-emerald/20 hover:bg-scraper-emerald/20 transition-all duration-200">
+                <i data-lucide="play" class="w-4 h-4"></i>
+                <span>Playground</span>
+            </a>
+            <a href="/admin/web-scraper/settings" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="settings" class="w-4 h-4"></i>
+                <span>Settings</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow p-6 max-w-7xl mx-auto w-full flex flex-col lg:flex-row gap-6">
+        <!-- Input Configuration Card -->
+        <div class="glass-card p-6 rounded-2xl w-full lg:w-1/3 flex flex-col justify-between">
+            <div class="space-y-6">
+                <div>
+                    <h2 class="text-lg font-semibold text-white mb-2 flex items-center space-x-2">
+                        <i data-lucide="sliders" class="text-scraper-emerald w-5 h-5"></i>
+                        <span>Konfiguration</span>
+                    </h2>
+                    <p class="text-xs text-slate-400">Passe die Parameter an, um die API-Anfrage zu testen.</p>
+                </div>
+
+                <!-- URL Input -->
+                <div class="space-y-2">
+                    <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Ziel-URL</label>
+                    <input id="target-url" type="url" placeholder="https://example.com" class="w-full bg-scraper-dark border border-scraper-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-scraper-emerald transition-all duration-200 text-sm" value="https://example.com">
+                </div>
+
+                <!-- Response Filters -->
+                <div class="space-y-2">
+                    <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Response Filters</label>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <label class="flex items-center space-x-2 bg-scraper-dark/40 border border-scraper-border p-2.5 rounded-lg cursor-pointer hover:bg-scraper-dark/60 transition-colors">
+                            <input id="filter-md" type="checkbox" checked class="accent-scraper-emerald">
+                            <span>Markdown</span>
+                        </label>
+                        <label class="flex items-center space-x-2 bg-scraper-dark/40 border border-scraper-border p-2.5 rounded-lg cursor-pointer hover:bg-scraper-dark/60 transition-colors">
+                            <input id="filter-html" type="checkbox" class="accent-scraper-emerald">
+                            <span>Raw HTML</span>
+                        </label>
+                        <label class="flex items-center space-x-2 bg-scraper-dark/40 border border-scraper-border p-2.5 rounded-lg cursor-pointer hover:bg-scraper-dark/60 transition-colors">
+                            <input id="filter-data" type="checkbox" checked class="accent-scraper-emerald">
+                            <span>Extracted Data</span>
+                        </label>
+                        <label class="flex items-center space-x-2 bg-scraper-dark/40 border border-scraper-border p-2.5 rounded-lg cursor-pointer hover:bg-scraper-dark/60 transition-colors">
+                            <input id="filter-screenshot" type="checkbox" class="accent-scraper-emerald">
+                            <span>Screenshot</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Parameters -->
+                <div class="space-y-3 bg-scraper-dark/20 p-4 rounded-xl border border-scraper-border/40 text-xs space-y-4">
+                    <!-- Block Media -->
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span class="font-medium text-slate-300">Medien blockieren</span>
+                            <p class="text-[10px] text-slate-400">Keine Bilder/CSS laden (schneller)</p>
+                        </div>
+                        <input id="opt-block-media" type="checkbox" checked class="accent-scraper-emerald w-4 h-4 cursor-pointer">
+                    </div>
+                    
+                    <!-- Wait Until -->
+                    <div class="space-y-1">
+                        <span class="font-medium text-slate-300">Warte-Bedingung (Wait Until)</span>
+                        <select id="opt-wait-until" class="w-full bg-scraper-dark border border-scraper-border rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-scraper-emerald">
+                            <option value="networkidle">networkidle (Keine Anfragen)</option>
+                            <option value="load">load (Komplett geladen)</option>
+                            <option value="domcontentloaded">domcontentloaded (DOM geladen)</option>
+                        </select>
+                    </div>
+
+                    <!-- Wait For Selector -->
+                    <div class="space-y-1">
+                        <span class="font-medium text-slate-300">Warte auf CSS-Selector (Optional)</span>
+                        <input id="opt-wait-for-selector" type="text" placeholder="z.B. #content" class="w-full bg-scraper-dark border border-scraper-border rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-scraper-emerald">
+                    </div>
+
+                    <!-- Subpage Crawling -->
+                    <div class="border-t border-scraper-border/40 pt-3 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <span class="font-medium text-slate-300">Sub-Page Crawling</span>
+                                <p class="text-[10px] text-slate-400">Unterseiten derselben Domain mitscrapen</p>
+                            </div>
+                            <input id="opt-page-crawling" type="checkbox" class="accent-scraper-emerald w-4 h-4 cursor-pointer" onchange="toggleCrawlOptions()">
+                        </div>
+                        
+                        <div id="crawl-options" class="hidden grid grid-cols-2 gap-2 mt-2">
+                            <div class="space-y-1">
+                                <span class="text-[10px] text-slate-400">Max Tiefe</span>
+                                <input id="opt-max-depth" type="number" min="1" max="3" value="1" class="w-full bg-scraper-dark border border-scraper-border rounded-lg px-2 py-1 text-slate-300 focus:outline-none">
+                            </div>
+                            <div class="space-y-1">
+                                <span class="text-[10px] text-slate-400">Max Seiten</span>
+                                <input id="opt-max-pages" type="number" min="1" max="10" value="3" class="w-full bg-scraper-dark border border-scraper-border rounded-lg px-2 py-1 text-slate-300 focus:outline-none">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Chunking -->
+                    <div class="border-t border-scraper-border/40 pt-3 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <span class="font-medium text-slate-300">LLM Chunking</span>
+                                <p class="text-[10px] text-slate-400">Markdown in Token-Häppchen zerteilen</p>
+                            </div>
+                            <input id="opt-chunking" type="checkbox" class="accent-scraper-emerald w-4 h-4 cursor-pointer" onchange="toggleChunkingOptions()">
+                        </div>
+                        
+                        <div id="chunking-options" class="hidden grid grid-cols-2 gap-2 mt-2">
+                            <div class="space-y-1">
+                                <span class="text-[10px] text-slate-400">Größe (Zeichen)</span>
+                                <input id="opt-chunk-size" type="number" min="100" max="5000" value="1000" class="w-full bg-scraper-dark border border-scraper-border rounded-lg px-2 py-1 text-slate-300 focus:outline-none">
+                            </div>
+                            <div class="space-y-1">
+                                <span class="text-[10px] text-slate-400">Überlappung</span>
+                                <input id="opt-chunk-overlap" type="number" min="0" max="1000" value="200" class="w-full bg-scraper-dark border border-scraper-border rounded-lg px-2 py-1 text-slate-300 focus:outline-none">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Run Button -->
+            <button onclick="runScraperTest()" class="w-full mt-6 bg-scraper-emerald text-scraper-dark py-3.5 px-4 rounded-xl font-bold hover:bg-emerald-400 active:scale-[0.98] transition-all flex items-center justify-center space-x-2 shadow-lg shadow-scraper-emerald/10">
+                <i data-lucide="play" class="w-5 h-5 fill-scraper-dark"></i>
+                <span>Scrape starten</span>
+            </button>
+        </div>
+
+        <!-- Output Display Card -->
+        <div class="glass-card p-6 rounded-2xl w-full lg:w-2/3 flex flex-col">
+            <div class="border-b border-scraper-border pb-4 mb-4 flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-white">Ergebnis</h2>
+                    <p class="text-xs text-slate-400" id="result-status">Bisher keine Abfragen gestartet.</p>
+                </div>
+                <div class="flex space-x-2">
+                    <button onclick="copyOutput()" id="btn-copy" class="hidden items-center space-x-2 text-xs font-semibold px-4 py-2 rounded-lg bg-scraper-border/50 text-slate-300 hover:bg-scraper-border hover:text-white transition-all">
+                        <i data-lucide="copy" class="w-4 h-4"></i>
+                        <span>Kopieren</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Loading overlay -->
+            <div id="loading-spinner" class="hidden flex-grow flex flex-col items-center justify-center space-y-4 py-24 text-slate-400">
+                <i data-lucide="loader" class="w-12 h-12 animate-spin text-scraper-emerald"></i>
+                <div class="text-center">
+                    <p class="text-sm font-semibold text-white animate-pulse" id="loading-step">Warte in der Scraping-Queue...</p>
+                    <p class="text-xs">Der Smart-Stealth-Prozess kann bis zu 30s dauern.</p>
+                </div>
+            </div>
+
+            <!-- Placeholder content -->
+            <div id="output-placeholder" class="flex-grow flex flex-col items-center justify-center space-y-3 py-24 text-slate-500">
+                <i data-lucide="terminal" class="w-16 h-16"></i>
+                <p class="text-sm">Trage links eine URL ein und klicke auf "Scrape starten", um JSON-Ergebnisse zu sehen.</p>
+            </div>
+
+            <!-- Main output layout (Tabs) -->
+            <div id="output-layout" class="hidden flex-grow flex flex-col space-y-4">
+                <!-- Navigation Tabs -->
+                <div class="flex border-b border-scraper-border text-sm">
+                    <button onclick="switchTab('tab-json')" id="btn-tab-json" class="px-4 py-2.5 border-b-2 border-scraper-emerald text-white font-medium focus:outline-none">JSON Response</button>
+                    <button onclick="switchTab('tab-md')" id="btn-tab-md" class="hidden px-4 py-2.5 border-b-2 border-transparent text-slate-400 hover:text-white focus:outline-none">Markdown</button>
+                    <button onclick="switchTab('tab-screenshot')" id="btn-tab-screenshot" class="hidden px-4 py-2.5 border-b-2 border-transparent text-slate-400 hover:text-white focus:outline-none">Screenshot</button>
+                </div>
+
+                <!-- JSON Content -->
+                <div id="tab-json" class="flex-grow flex flex-col">
+                    <pre class="bg-scraper-dark/60 border border-scraper-border p-4 rounded-xl overflow-auto text-xs font-mono max-h-[500px] text-slate-300 whitespace-pre-wrap" id="json-raw"></pre>
+                </div>
+
+                <!-- Markdown Content -->
+                <div id="tab-md" class="hidden flex-grow flex flex-col">
+                    <textarea class="bg-scraper-dark/60 border border-scraper-border p-4 rounded-xl overflow-auto text-xs font-mono max-h-[500px] h-[400px] text-slate-300 focus:outline-none resize-none" id="md-raw" readonly></textarea>
+                </div>
+
+                <!-- Screenshot Image -->
+                <div id="tab-screenshot" class="hidden flex-grow flex items-center justify-center bg-scraper-dark/30 border border-scraper-border p-4 rounded-xl overflow-hidden">
+                    <img id="screenshot-img" src="" alt="Screenshot" class="max-h-[450px] object-contain rounded border border-scraper-border shadow-2xl">
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Init Lucide icons
+        lucide.createIcons();
+
+        function toggleCrawlOptions() {
+            const isChecked = document.getElementById("opt-page-crawling").checked;
+            document.getElementById("crawl-options").classList.toggle("hidden", !isChecked);
+        }
+
+        function toggleChunkingOptions() {
+            const isChecked = document.getElementById("opt-chunking").checked;
+            document.getElementById("chunking-options").classList.toggle("hidden", !isChecked);
+        }
+
+        function switchTab(activeTabId) {
+            const tabs = ["tab-json", "tab-md", "tab-screenshot"];
+            tabs.forEach(tabId => {
+                const element = document.getElementById(tabId);
+                const btn = document.getElementById("btn-" + tabId);
+                if (tabId === activeTabId) {
+                    element.classList.remove("hidden");
+                    btn.classList.add("border-scraper-emerald", "text-white");
+                    btn.classList.remove("border-transparent", "text-slate-400");
+                } else {
+                    element.classList.add("hidden");
+                    btn.classList.remove("border-scraper-emerald", "text-white");
+                    btn.classList.add("border-transparent", "text-slate-400");
+                }
+            });
+        }
+
+        let rawJsonResponse = null;
+
+        async function runScraperTest() {
+            const url = document.getElementById("target-url").value.strip ? document.getElementById("target-url").value.strip() : document.getElementById("target-url").value.trim();
+            if (!url) {
+                alert("Bitte gib eine gültige URL an.");
+                return;
+            }
+
+            // UI zurücksetzen
+            document.getElementById("output-placeholder").classList.add("hidden");
+            document.getElementById("output-layout").classList.add("hidden");
+            document.getElementById("btn-copy").classList.add("hidden");
+            document.getElementById("loading-spinner").classList.remove("hidden");
+            document.getElementById("result-status").innerText = "Anfrage wird verarbeitet...";
+            document.getElementById("loading-step").innerText = "Lade im Headless Browser...";
+
+            // Payload aufbauen
+            const payload = {
+                url: url,
+                delivery_mode: "direct",
+                response_filters: {
+                    include_markdown: document.getElementById("filter-md").checked,
+                    include_html: document.getElementById("filter-html").checked,
+                    include_extracted_data: document.getElementById("filter-data").checked,
+                    include_screenshot: document.getElementById("filter-screenshot").checked
+                },
+                block_media: document.getElementById("opt-block-media").checked,
+                wait_until: document.getElementById("opt-wait-until").value,
+                wait_for_selector: document.getElementById("opt-wait-for-selector").value || null,
+                page_crawling: document.getElementById("opt-page-crawling").checked,
+                max_crawl_depth: parseInt(document.getElementById("opt-max-depth").value),
+                max_crawl_pages: parseInt(document.getElementById("opt-max-pages").value),
+                chunk_size: document.getElementById("opt-chunking").checked ? parseInt(document.getElementById("opt-chunk-size").value) : null,
+                chunk_overlap: document.getElementById("opt-chunking").checked ? parseInt(document.getElementById("opt-chunk-overlap").value) : null
+            };
+
+            const startTime = Date.now();
+
+            try {
+                // Sende an API
+                const res = await fetch("/v1/web/scrape?playground=true", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await res.json();
+                rawJsonResponse = data;
+                
+                document.getElementById("loading-spinner").classList.add("hidden");
+                
+                if (res.status === 200) {
+                    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+                    document.getElementById("result-status").innerHTML = `<span class="text-emerald-400 font-semibold">200 OK</span> - Erfolgreich verarbeitet in ${elapsed}s.`;
+                    
+                    // JSON raw anzeigen
+                    document.getElementById("json-raw").innerText = JSON.stringify(data, null, 2);
+                    
+                    // Markdown Tab steuern
+                    const btnMd = document.getElementById("btn-tab-md");
+                    if (data.content_md) {
+                        document.getElementById("md-raw").value = data.content_md;
+                        btnMd.classList.remove("hidden");
+                    } else {
+                        btnMd.classList.add("hidden");
+                    }
+                    
+                    // Screenshot Tab steuern
+                    const btnSc = document.getElementById("btn-tab-screenshot");
+                    if (data.screenshot_url) {
+                        // Die URL ist relativ, hole sie über den Host
+                        document.getElementById("screenshot-img").src = data.screenshot_url;
+                        btnSc.classList.remove("hidden");
+                    } else {
+                        btnSc.classList.add("hidden");
+                    }
+                    
+                    document.getElementById("output-layout").classList.remove("hidden");
+                    document.getElementById("btn-copy").classList.remove("hidden");
+                    switchTab("tab-json");
+                } else {
+                    document.getElementById("result-status").innerHTML = `<span class="text-rose-500 font-semibold">${res.status} Error</span> - Anfrage fehlgeschlagen.`;
+                    document.getElementById("json-raw").innerText = JSON.stringify(data, null, 2);
+                    document.getElementById("output-layout").classList.remove("hidden");
+                }
+            } catch (e) {
+                document.getElementById("loading-spinner").classList.add("hidden");
+                document.getElementById("result-status").innerHTML = `<span class="text-rose-500 font-semibold">Netzwerkfehler</span>`;
+                document.getElementById("json-raw").innerText = "Fehler bei der Verbindung zur API: " + e.toString();
+                document.getElementById("output-layout").classList.remove("hidden");
+            }
+        }
+
+        function copyOutput() {
+            if (!rawJsonResponse) return;
+            navigator.clipboard.writeText(JSON.stringify(rawJsonResponse, null, 2)).then(() => {
+                const btn = document.getElementById("btn-copy");
+                const text = btn.querySelector('span');
+                text.innerText = "Kopiert!";
+                setTimeout(() => {
+                    text.innerText = "Kopieren";
+                }, 2000);
+            });
+        }
+
+        // Evomi Bandbreite abfragen
+        async function updateEvomiBandwidth() {
+            try {
+                const res = await fetch("/admin/web-scraper/evomi-balance");
+                const data = await res.json();
+                const badge = document.getElementById("evomi-bandwidth-badge");
+                const text = document.getElementById("evomi-bandwidth-text");
+                
+                if (data.status === "success" && data.remaining !== null) {
+                    text.innerText = "Evomi: " + data.remaining + " GB";
+                    badge.classList.remove("hidden");
+                    badge.classList.add("flex");
+                } else {
+                    badge.classList.add("hidden");
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        updateEvomiBandwidth();
+    </script>
+</body>
+</html>

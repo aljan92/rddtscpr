@@ -7,7 +7,8 @@ import re
 from urllib.parse import urlparse
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
-from app.auth import get_account_cookies, update_session_state_with_cookies
+from app.reddit_scraper.auth import get_account_cookies, update_session_state_with_cookies
+
 
 class NSFWRequiredException(Exception):
     """Exception raised when content requires a logged-in NSFW account."""

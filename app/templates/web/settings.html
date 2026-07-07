@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Scraper - Einstellungen</title>
+    <!-- Outfit Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        scraper: {
+                            emerald: '#10B981',
+                            dark: '#0B1426',
+                            card: '#152238',
+                            border: '#1F2D44'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            background-color: #0B1426;
+            background-image: radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.05) 0%, transparent 40%),
+                              radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 40%);
+        }
+        .glass-card {
+            background: rgba(21, 34, 56, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(31, 45, 68, 0.8);
+        }
+    </style>
+</head>
+<body class="text-slate-200 min-h-screen font-sans flex flex-col">
+    <!-- Navbar -->
+    <nav class="glass-card sticky top-0 z-50 border-b border-scraper-border px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="bg-scraper-emerald p-2 rounded-xl text-white shadow-lg shadow-scraper-emerald/20 animate-pulse">
+                <i data-lucide="globe" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <div class="flex items-center space-x-2">
+                    <h1 class="text-xl font-bold tracking-tight text-white">Web Scraper</h1>
+                    <a href="/admin/dashboard" class="text-[10px] font-bold tracking-wider uppercase bg-orange-500/10 text-orange-500 border border-orange-500/20 px-2 py-0.5 rounded-full hover:bg-orange-500/20 transition-all">
+                        To Reddit Scraper
+                    </a>
+                </div>
+                <p class="text-xs text-slate-400">Agentic RAG Engine v1.0.0</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <div id="evomi-bandwidth-badge" class="hidden items-center space-x-1.5 text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
+                <i data-lucide="wifi" class="w-3.5 h-3.5"></i>
+                <span id="evomi-bandwidth-text">Evomi: -- GB</span>
+            </div>
+            <a href="/admin/web-scraper/dashboard" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="/admin/web-scraper/queue" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="list-ordered" class="w-4 h-4"></i>
+                <span>Queue</span>
+            </a>
+            <a href="/admin/web-scraper/playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
+                <i data-lucide="play" class="w-4 h-4"></i>
+                <span>Playground</span>
+            </a>
+            <a href="/admin/web-scraper/settings" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg bg-scraper-emerald/10 text-scraper-emerald border border-scraper-emerald/20 hover:bg-scraper-emerald/20 transition-all duration-200">
+                <i data-lucide="settings" class="w-4 h-4"></i>
+                <span>Settings</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow p-6 max-w-4xl mx-auto w-full space-y-6">
+        <!-- Alerts -->
+        {% if request.query_params.get('success') %}
+        <div class="flex items-center space-x-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+            <i data-lucide="check-circle" class="w-5 h-5 flex-shrink-0"></i>
+            <p class="text-sm font-medium">{{ request.query_params.get('success') }}</p>
+        </div>
+        {% endif %}
+        {% if request.query_params.get('error') %}
+        <div class="flex items-center space-x-3 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
+            <i data-lucide="alert-circle" class="w-5 h-5 flex-shrink-0"></i>
+            <p class="text-sm font-medium">{{ request.query_params.get('error') }}</p>
+        </div>
+        {% endif %}
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- Left Panel: Worker pool configuration -->
+            <div class="md:col-span-2 space-y-6">
+                <div class="glass-card p-6 rounded-2xl border border-scraper-border/60">
+                    <h2 class="text-lg font-bold text-white mb-2 flex items-center space-x-2">
+                        <i data-lucide="cpu" class="text-scraper-emerald w-5 h-5"></i>
+                        <span>Worker Pool &amp; Last-Limits</span>
+                    </h2>
+                    <p class="text-xs text-slate-400 mb-6">Passe die Anzahl paralleler Browser-Instanzen (Worker) für den Web-Scraper an.</p>
+                    
+                    <form action="/admin/web-scraper/settings" method="POST" class="space-y-6">
+                        <div class="space-y-2">
+                            <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Maximale Parallele Worker</label>
+                            <input type="number" name="web_scraper_max_workers" value="{{ web_scraper_max_workers }}" min="1" max="20" class="w-full bg-scraper-dark border border-scraper-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-scraper-emerald transition-all duration-200">
+                            <p class="text-[10px] text-slate-500">Bestimmt, wie viele Browser-Sessions gleichzeitig gestartet werden. Höhere Werte belasten den VPS-Arbeitsspeicher (RAM) stärker. Standard: 5.</p>
+                        </div>
+                        
+                        <button type="submit" class="w-full bg-scraper-emerald text-scraper-dark py-3 px-4 rounded-xl font-bold hover:bg-emerald-400 active:scale-[0.98] transition-all">
+                            Einstellungen speichern
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Right Panel: Diagnostics & Actions -->
+            <div class="space-y-6">
+                <!-- Shared credentials status -->
+                <div class="glass-card p-6 rounded-2xl border border-scraper-border/60">
+                    <h3 class="text-sm font-bold text-white mb-2 flex items-center space-x-2">
+                        <i data-lucide="shield-check" class="text-scraper-emerald w-4 h-4"></i>
+                        <span>Zugangsdaten (Geteilt)</span>
+                    </h3>
+                    <p class="text-xs text-slate-400 mb-4">Der Web-Scraper teilt sich die globale Konfiguration und den Evomi API-Key mit dem Reddit-Konto.</p>
+                    <div class="space-y-2 text-xs">
+                        <div class="flex justify-between py-2 border-b border-scraper-border/40">
+                            <span class="text-slate-400">Evomi API Key:</span>
+                            <span class="font-semibold text-slate-200">
+                                {% if settings.get('evomi_api_key') %}
+                                    <span class="text-emerald-400">Konfiguriert</span>
+                                {% else %}
+                                    <span class="text-slate-500">Nicht konfiguriert</span>
+                                {% endif %}
+                            </span>
+                        </div>
+                        <div class="flex justify-between py-2 border-b border-scraper-border/40">
+                            <span class="text-slate-400">RapidAPI Proxy Secret:</span>
+                            <span class="font-semibold text-slate-200">
+                                {% if settings.get('rapidapi_proxy_secret') %}
+                                    <span class="text-emerald-400">Aktiv</span>
+                                {% else %}
+                                    <span class="text-slate-500">Inaktiv</span>
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    <a href="/admin/settings" class="mt-4 w-full flex items-center justify-center space-x-2 text-xs font-semibold py-2 px-3 rounded-lg border border-scraper-border hover:bg-slate-800 transition-colors text-slate-300">
+                        <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                        <span>Globale Keys verwalten</span>
+                    </a>
+                </div>
+
+                <!-- Database Maintenance -->
+                <div class="glass-card p-6 rounded-2xl border border-scraper-border/60">
+                    <h3 class="text-sm font-bold text-white mb-2 flex items-center space-x-2">
+                        <i data-lucide="database" class="text-rose-500 w-4 h-4"></i>
+                        <span>Wartung</span>
+                    </h3>
+                    <p class="text-xs text-slate-400 mb-4">Setze Statistiken und Logs des Web-Scrapers zurück.</p>
+                    
+                    <form action="/admin/web-scraper/settings/reset-stats" method="POST" onsubmit="return confirm('Möchtest du wirklich alle aufgezeichneten Web-Scraper Requests löschen?')">
+                        <button type="submit" class="w-full flex items-center justify-center space-x-2 text-xs font-semibold py-2.5 px-4 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 transition-all duration-200">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            <span>Scraper-Stats zurücksetzen</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="glass-card mt-auto border-t border-scraper-border px-6 py-4 text-center text-xs text-slate-500">
+        Web Scraper Dashboard &copy; 2026. Made with Playwright, Evomi & FastAPI.
+    </footer>
+
+    <script>
+        lucide.createIcons();
+
+        // Evomi Bandbreite abfragen
+        async function updateEvomiBandwidth() {
+            try {
+                const res = await fetch("/admin/web-scraper/evomi-balance");
+                const data = await res.json();
+                const badge = document.getElementById("evomi-bandwidth-badge");
+                const text = document.getElementById("evomi-bandwidth-text");
+                
+                if (data.status === "success" && data.remaining !== null) {
+                    text.innerText = "Evomi: " + data.remaining + " GB";
+                    badge.classList.remove("hidden");
+                    badge.classList.add("flex");
+                } else {
+                    badge.classList.add("hidden");
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        updateEvomiBandwidth();
+    </script>
+</body>
+</html>

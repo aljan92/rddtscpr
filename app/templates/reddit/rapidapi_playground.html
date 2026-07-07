@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reddit Scraper - Playground</title>
+    <title>Reddit Scraper - RapidAPI Playground</title>
     <!-- Outfit Google Font -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Tailwind CSS (CDN) -->
@@ -32,8 +32,8 @@
     <style>
         body {
             background-color: #0B1426;
-            background-image: radial-gradient(circle at 10% 20%, rgba(255, 69, 0, 0.05) 0%, transparent 40%),
-                              radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 40%);
+            background-image: radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.05) 0%, transparent 40%),
+                              radial-gradient(circle at 90% 80%, rgba(255, 69, 0, 0.03) 0%, transparent 40%);
         }
         .glass-card {
             background: rgba(21, 34, 56, 0.7);
@@ -53,7 +53,7 @@
             border-radius: 4px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: #FF4500;
+            background: #3B82F6;
         }
     </style>
 </head>
@@ -61,12 +61,20 @@
     <!-- Navbar -->
     <nav class="glass-card sticky top-0 z-50 border-b border-reddit-border px-6 py-4 flex items-center justify-between">
         <div class="flex items-center space-x-3">
-            <div class="bg-reddit-orange p-2 rounded-xl text-white shadow-lg shadow-reddit-orange/20 animate-pulse">
-                <i data-lucide="database" class="w-6 h-6"></i>
+            <div class="bg-blue-600 p-2 rounded-xl text-white shadow-lg shadow-blue-600/20">
+                <i data-lucide="globe" class="w-6 h-6 animate-spin" style="animation-duration: 10s;"></i>
             </div>
             <div>
-                <h1 class="text-xl font-bold tracking-tight text-white">Reddit Scraper</h1>
-                <p class="text-xs text-slate-400">Data Extraction Engine v1.0.0</p>
+                <div class="flex items-center space-x-2">
+                    <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                        <span>RapidAPI Playground</span>
+                        <span class="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded uppercase font-semibold">Gateway Test</span>
+                    </h1>
+                    <a href="/admin/web-scraper/dashboard" class="text-[10px] font-bold tracking-wider uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full hover:bg-emerald-500/20 transition-all">
+                        To Web Scraper
+                    </a>
+                </div>
+                <p class="text-xs text-slate-400">Teste deine API live über das offizielle RapidAPI-Netzwerk</p>
             </div>
         </div>
         <div class="flex items-center space-x-4">
@@ -83,12 +91,12 @@
                 <i data-lucide="list-ordered" class="w-4 h-4"></i>
                 <span>Queue</span>
             </a>
-            <a href="/admin/playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg bg-reddit-orange/10 text-reddit-orange border border-reddit-orange/20 hover:bg-reddit-orange/20 transition-all duration-200">
+            <a href="/admin/playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
                 <i data-lucide="play" class="w-4 h-4"></i>
                 <span>Playground</span>
             </a>
-            <a href="/admin/rapidapi-playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
-                <i data-lucide="globe" class="w-4 h-4 text-blue-400"></i>
+            <a href="/admin/rapidapi-playground" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg bg-blue-600/10 text-blue-400 border border-blue-600/20 hover:bg-blue-600/20 transition-all duration-200">
+                <i data-lucide="globe" class="w-4 h-4"></i>
                 <span>RapidAPI Playground</span>
             </a>
             <a href="/admin/settings" class="flex items-center space-x-2 text-sm font-medium px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200">
@@ -103,18 +111,45 @@
         <!-- Input Form Card -->
         <div class="glass-card p-6 rounded-2xl w-full lg:w-1/3 flex flex-col justify-between">
             <div class="space-y-6">
+                <!-- Credentials Warn Banner if missing -->
+                {% if not settings.rapidapi_key or not settings.rapidapi_host %}
+                <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs space-y-1.5">
+                    <p class="font-bold flex items-center gap-1.5">
+                        <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                        <span>Zugangsdaten fehlen</span>
+                    </p>
+                    <p class="text-[11px] leading-relaxed">
+                        Hinterlege zuerst deinen <code class="text-white font-mono bg-black/30 px-1 py-0.5 rounded">X-RapidAPI-Key</code> und <code class="text-white font-mono bg-black/30 px-1 py-0.5 rounded">X-RapidAPI-Host</code> in den <a href="/admin/settings" class="underline text-amber-400 hover:text-amber-300">Settings</a>, um hier live über RapidAPI zu testen.
+                    </p>
+                </div>
+                {% endif %}
+
                 <div>
                     <h2 class="text-lg font-semibold text-white mb-2 flex items-center space-x-2">
-                        <i data-lucide="sliders" class="text-reddit-orange w-5 h-5"></i>
-                        <span>Konfiguration</span>
+                        <i data-lucide="sliders" class="text-blue-400 w-5 h-5"></i>
+                        <span>API-Parameter</span>
                     </h2>
-                    <p class="text-xs text-slate-400">Passe die Parameter an, um die API-Anfrage zu testen.</p>
+                    <p class="text-xs text-slate-400">Verwende deine RapidAPI Subskription-Daten.</p>
+                </div>
+
+                <!-- Simulation Plan Selection -->
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Simulation Abonnement</label>
+                        <span class="text-[10px] bg-slate-800 text-slate-400 border border-reddit-border px-1.5 py-0.2 rounded font-mono">X-RapidAPI-Subscription</span>
+                    </div>
+                    <select id="sim-subscription" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-all duration-200">
+                        <option value="Basic">Basic (Free-Features)</option>
+                        <option value="Pro" selected>Pro (Zusatz-Features wie load_more)</option>
+                        <option value="Ultra">Ultra (Premium)</option>
+                    </select>
+                    <p class="text-[10px] text-slate-500">RapidAPI leitet diesen String im Header an deinen VPS weiter.</p>
                 </div>
 
                 <!-- Endpoint Selection -->
                 <div class="space-y-2">
                     <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Endpunkt</label>
-                    <select id="endpoint-select" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                    <select id="endpoint-select" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-all duration-200">
                         <option value="posts">Subreddit Posts (/v1/subreddit-posts)</option>
                         <option value="comments">Post Comments (/v1/post-comments)</option>
                     </select>
@@ -124,12 +159,12 @@
                 <div id="posts-fields" class="space-y-4">
                     <div class="space-y-2">
                         <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Subreddit (Name oder URL)</label>
-                        <input type="text" id="subreddit-input" placeholder="z.B. beziehungen" value="beziehungen" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                        <input type="text" id="subreddit-input" placeholder="z.B. beziehungen" value="beziehungen" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-all duration-200">
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="space-y-2">
                             <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Sortierung</label>
-                            <select id="posts-sort" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                            <select id="posts-sort" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-all duration-200">
                                 <option value="hot">Hot</option>
                                 <option value="new">New</option>
                                 <option value="top">Top</option>
@@ -138,7 +173,7 @@
                         </div>
                         <div class="space-y-2" id="timeframe-container">
                             <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Zeitraum</label>
-                            <select id="posts-timeframe" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                            <select id="posts-timeframe" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-all duration-200">
                                 <option value="day">Day</option>
                                 <option value="hour">Hour</option>
                                 <option value="week">Week</option>
@@ -154,11 +189,11 @@
                 <div id="comments-fields" class="space-y-4 hidden">
                     <div class="space-y-2">
                         <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Post URL</label>
-                        <input type="text" id="post-url-input" placeholder="https://www.reddit.com/r/..." class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                        <input type="text" id="post-url-input" placeholder="https://www.reddit.com/r/..." class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-all duration-200">
                     </div>
                     <div class="space-y-2">
                         <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Sortierung</label>
-                        <select id="comments-sort" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                        <select id="comments-sort" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-all duration-200">
                             <option value="confidence">Best (Confidence)</option>
                             <option value="top">Top</option>
                             <option value="new">New</option>
@@ -168,11 +203,11 @@
                         </select>
                     </div>
                     <div class="flex items-center space-x-2.5 pt-1.5">
-                        <input type="checkbox" id="include-replies-checkbox" class="w-4.5 h-4.5 bg-reddit-dark border border-reddit-border rounded accent-reddit-orange focus:ring-reddit-orange focus:ring-offset-reddit-dark">
+                        <input type="checkbox" id="include-replies-checkbox" class="w-4.5 h-4.5 bg-reddit-dark border border-reddit-border rounded accent-blue-500 focus:ring-blue-500 focus:ring-offset-reddit-dark">
                         <label for="include-replies-checkbox" class="text-xs font-semibold text-slate-400 cursor-pointer select-none hover:text-slate-300 transition-all duration-150">Antworten (Replies) einbeziehen</label>
                     </div>
                     <div id="load-more-container" class="flex items-center space-x-2.5 pt-1 opacity-40 pointer-events-none transition-all duration-200">
-                        <input type="checkbox" id="load-more-checkbox" disabled class="w-4.5 h-4.5 bg-reddit-dark border border-reddit-border rounded accent-reddit-orange focus:ring-reddit-orange focus:ring-offset-reddit-dark">
+                        <input type="checkbox" id="load-more-checkbox" disabled class="w-4.5 h-4.5 bg-reddit-dark border border-reddit-border rounded accent-blue-500 focus:ring-blue-500 focus:ring-offset-reddit-dark">
                         <label for="load-more-checkbox" class="text-xs font-semibold text-slate-400 cursor-pointer select-none hover:text-slate-300 transition-all duration-150">Versteckte Antworten nachladen (load_more - Pro)</label>
                     </div>
                 </div>
@@ -180,14 +215,14 @@
                 <!-- Limit Field -->
                 <div class="space-y-2">
                     <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Limit (Anzahl Einträge)</label>
-                    <input type="number" id="limit-input" min="1" max="100" value="5" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-reddit-orange transition-all duration-200">
+                    <input type="number" id="limit-input" min="1" max="100" value="5" class="w-full bg-reddit-dark border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-all duration-200">
                 </div>
             </div>
 
             <!-- Submit Button -->
-            <button id="send-request-btn" class="w-full mt-6 flex items-center justify-center space-x-2 bg-reddit-orange hover:bg-reddit-orange/90 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-300 shadow-lg shadow-reddit-orange/20 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50">
-                <i data-lucide="play" id="btn-icon" class="w-5 h-5"></i>
-                <span id="btn-text">Anfrage senden</span>
+            <button id="send-request-btn" {% if not settings.rapidapi_key or not settings.rapidapi_host %}disabled{% endif %} class="w-full mt-6 flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-300 shadow-lg shadow-blue-600/20 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-30 disabled:pointer-events-none">
+                <i data-lucide="globe" id="btn-icon" class="w-5 h-5"></i>
+                <span id="btn-text">Über RapidAPI abfragen</span>
             </button>
         </div>
 
@@ -197,7 +232,7 @@
                 <div>
                     <h2 class="text-lg font-semibold text-white flex items-center space-x-2">
                         <i data-lucide="braces" class="text-blue-400 w-5 h-5"></i>
-                        <span>API-Response</span>
+                        <span>Live Gateway Response</span>
                     </h2>
                 </div>
                 <div class="flex items-center space-x-2">
@@ -210,17 +245,18 @@
                 </div>
             </div>
 
-            <div class="flex-grow bg-slate-950 border border-reddit-border rounded-xl p-4 overflow-y-auto font-mono text-xs text-emerald-400 min-h-[400px] max-h-[600px] flex flex-col justify-between" id="response-display-container">
-                <pre class="whitespace-pre-wrap select-all" id="json-output">// Konfiguriere die API links und klicke auf "Anfrage senden" ...</pre>
+            <!-- Pre display area -->
+            <div class="flex-grow bg-slate-950 border border-reddit-border rounded-xl p-4 overflow-y-auto font-mono text-xs text-blue-400 min-h-[400px] max-h-[650px] flex flex-col justify-between" id="response-display-container">
+                <pre class="whitespace-pre-wrap select-all" id="json-output">// Hinterlege deine RapidAPI Credentials und drücke "Über RapidAPI abfragen" ...</pre>
                 
                 <!-- Spinner Overlay -->
                 <div id="loading-spinner" class="hidden flex-col items-center justify-center space-y-4 my-auto py-12">
-                    <div class="w-12 h-12 border-4 border-reddit-orange border-t-transparent rounded-full animate-spin"></div>
+                    <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                     <div class="text-center">
-                        <p class="text-white font-semibold">Rufe Reddit Daten ab...</p>
+                        <p class="text-white font-semibold">Führe Request über RapidAPI Gateway aus...</p>
                         <p class="text-xs text-slate-500 mt-1">
-                            Der .json-Trick wird ausgeführt.<br>
-                            Falls Reddit blockiert, startet Playwright (kann bis zu 30s dauern).
+                            Die Anfrage läuft jetzt verschlüsselt über das offizielle RapidAPI-System.<br>
+                            Dein VPS empfängt und validiert die Anfrage und gibt die Reddit-Ergebnisse zurück.
                         </p>
                     </div>
                 </div>
@@ -272,6 +308,7 @@
         const copyBtn = document.getElementById('copy-btn');
         const responseStatus = document.getElementById('response-status');
         const responseTime = document.getElementById('response-time');
+        const simSubscription = document.getElementById('sim-subscription');
 
         // Toggle Fields based on Endpoint Selection
         endpointSelect.addEventListener('change', function() {
@@ -320,39 +357,45 @@
             copyBtn.classList.add('hidden');
             responseStatus.classList.add('hidden');
             responseTime.classList.add('hidden');
-            btnText.innerText = 'Lade...';
+            btnText.innerText = 'Sende...';
             btnIcon.setAttribute('data-lucide', 'loader-2');
             btnIcon.classList.add('animate-spin');
             lucide.createIcons();
 
             const endpoint = endpointSelect.value;
-            let url = '';
+            let path = '';
             
             if (endpoint === 'posts') {
                 const target = encodeURIComponent(document.getElementById('subreddit-input').value);
                 const sort = document.getElementById('posts-sort').value;
                 const timeframe = document.getElementById('posts-timeframe').value;
                 const limit = document.getElementById('limit-input').value;
-                url = `/v1/subreddit-posts?target=${target}&sort=${sort}&timeframe=${timeframe}&limit=${limit}&playground=true`;
+                path = `/v1/subreddit-posts?target=${target}&sort=${sort}&timeframe=${timeframe}&limit=${limit}`;
             } else {
                 const postUrl = encodeURIComponent(document.getElementById('post-url-input').value);
                 const sort = document.getElementById('comments-sort').value;
                 const limit = document.getElementById('limit-input').value;
                 const includeReplies = document.getElementById('include-replies-checkbox').checked;
                 const loadMore = document.getElementById('load-more-checkbox').checked;
-                url = `/v1/post-comments?post_url=${postUrl}&sort=${sort}&limit=${limit}&include_replies=${includeReplies}&load_more=${loadMore}&playground=true`;
+                path = `/v1/post-comments?post_url=${postUrl}&sort=${sort}&limit=${limit}&include_replies=${includeReplies}&load_more=${loadMore}`;
             }
+
+            // RapidAPI-Gateway URL zusammenbauen
+            const rapidHost = "{{ settings.rapidapi_host }}";
+            const rapidKey = "{{ settings.rapidapi_key }}";
+            const targetUrl = `https://${rapidHost}${path}`;
 
             const startTime = performance.now();
 
             try {
-                const headers = {};
-                const proxySecret = "{{ settings.rapidapi_proxy_secret }}";
-                if (proxySecret && proxySecret.trim() !== "") {
-                    headers["X-RapidAPI-Proxy-Secret"] = proxySecret;
-                }
+                const headers = {
+                    "X-RapidAPI-Key": rapidKey,
+                    "X-RapidAPI-Host": rapidHost,
+                    "X-RapidAPI-Subscription": simSubscription.value
+                };
 
-                const response = await fetch(url, { headers: headers });
+                // Request direkt an das RapidAPI Gateway schicken
+                const response = await fetch(targetUrl, { headers: headers });
                 const status = response.status;
                 const data = await response.json();
                 const duration = Math.round(performance.now() - startTime);
@@ -376,16 +419,16 @@
 
             } catch (err) {
                 responseStatus.classList.remove('hidden');
-                responseStatus.innerText = 'Network Error';
+                responseStatus.innerText = 'RapidAPI Gateway Error';
                 responseStatus.className = 'text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20';
-                jsonOutput.innerText = `Fehler bei der Verbindung zur API: ${err.message}`;
+                jsonOutput.innerText = `Fehler bei der Verbindung über das RapidAPI Gateway: ${err.message}\n\nStelle sicher, dass deine API auf RapidAPI bereits veröffentlicht (oder als Entwurf freigegeben) ist und deine VPS-IP vom Hostinger-Server erreichbar ist.`;
             } finally {
                 // UI State restore
                 sendRequestBtn.disabled = false;
                 loadingSpinner.classList.add('hidden');
                 jsonOutput.classList.remove('hidden');
-                btnText.innerText = 'Anfrage senden';
-                btnIcon.setAttribute('data-lucide', 'play');
+                btnText.innerText = 'Über RapidAPI abfragen';
+                btnIcon.setAttribute('data-lucide', 'globe');
                 btnIcon.classList.remove('animate-spin');
                 lucide.createIcons();
             }
@@ -403,7 +446,6 @@
                     setTimeout(() => { span.innerText = origText; }, 2000);
                 });
             } else {
-                // Fallback für ungesicherte Kontexte (HTTP)
                 const textArea = document.createElement("textarea");
                 textArea.value = textToCopy;
                 textArea.style.position = "fixed";

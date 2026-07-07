@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy.orm import Session
 from app.database import SessionLocal, RedditAccount, APIRequestLog, SystemSetting
-from app.scraper import get_subreddit_posts, get_post_comments, NSFWRequiredException
+from app.reddit_scraper.scraper import get_subreddit_posts, get_post_comments, NSFWRequiredException
 
 logger = logging.getLogger("rddtscpr.queue")
 
@@ -1106,7 +1106,7 @@ class ScrapeQueueManager:
             return await self._auto_login_account(db, account)
             
         from playwright.async_api import async_playwright
-        from app.scraper import launch_browser
+        from app.reddit_scraper.scraper import launch_browser
         import json
         
         logger.info(f"Session-Refresh: Prüfe Session für '{account.username}' via Playwright...")
@@ -1149,7 +1149,7 @@ class ScrapeQueueManager:
         return await self._auto_login_account(db, account)
 
     async def _auto_login_account(self, db: Session, account: RedditAccount) -> bool:
-        from app.auth import login_to_reddit
+        from app.reddit_scraper.auth import login_to_reddit
         try:
             logger.info(f"Auto-Login: Führe Login-Refresh für Account '{account.username}' durch...")
             session_state_json = await login_to_reddit(
