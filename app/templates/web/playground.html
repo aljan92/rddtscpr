@@ -215,6 +215,18 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Subscription Plan Simulation -->
+                <div class="space-y-2">
+                    <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Abo-Plan simulieren</label>
+                    <select id="plan-select" class="w-full bg-scraper-dark border border-scraper-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-scraper-emerald transition-all duration-200">
+                        <option value="BASIC">Basic</option>
+                        <option value="PRO">Pro</option>
+                        <option value="ULTRA">Ultra</option>
+                        <option value="MEGA">Mega</option>
+                    </select>
+                    <p class="text-[10px] text-slate-500">Setzt den <code class="text-slate-400">X-RapidAPI-Subscription</code> Header, um Plan-abhängige Features zu testen.</p>
+                </div>
             </div>
 
             <!-- Run Button -->
@@ -352,11 +364,13 @@
             const startTime = Date.now();
 
             try {
-                // Sende an API
+                const selectedPlan = document.getElementById("plan-select").value;
+
                 const res = await fetch("/v1/web/scrape?playground=true", {
                     method: "POST",
                     headers: {
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json",
+                        "X-RapidAPI-Subscription": selectedPlan
                     },
                     body: JSON.stringify(payload)
                 });

@@ -294,34 +294,11 @@
                         </div>
                         <div>
                             <h2 class="text-lg font-semibold text-white">Reddit Scraper Einstellungen</h2>
-                            <p class="text-xs text-slate-400">Konfiguration für API-Schutz und die asynchrone Reddit Account-Queue</p>
+                            <p class="text-xs text-slate-400">Konfiguration für API-Schutz und RapidAPI-Zugangsdaten</p>
                         </div>
                     </div>
 
-                    <!-- Sandbox mode toggle -->
-                    <div class="flex items-start justify-between bg-reddit-dark/30 border border-reddit-border/50 rounded-xl p-5">
-                        <div class="space-y-1 pr-4">
-                            <label class="text-sm font-semibold text-white flex items-center space-x-2">
-                                <span>Sandbox-Modus</span>
-                                <span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-reddit-orange/10 text-reddit-orange border border-reddit-orange/20">Testen</span>
-                            </label>
-                            <p class="text-xs text-slate-400">
-                                Im Sandbox-Modus wird die Prüfung des `Proxy-Secret` Headers übersprungen. Du kannst die API direkt aufrufen und über den `X-RapidAPI-Subscription` Header beliebige Abonnements (Basic, Pro, Ultra) simulieren.
-                            </p>
-                        </div>
-                        <div>
-                            <label class="switch">
-                                <input type="checkbox" name="sandbox_mode" id="sandbox_mode" {% if settings.sandbox_mode %}checked{% endif %} value="true">
-                                <span class="slider"></span>
-                            </label>
-                        </div>
-                    </div>
 
-                    <!-- Sandbox Mode Live Indicator -->
-                    <div id="sandbox-warning" class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center space-x-3 text-xs font-medium {% if not settings.sandbox_mode %}hidden{% endif %}">
-                        <i data-lucide="alert-triangle" class="w-4 h-4 flex-shrink-0 animate-bounce"></i>
-                        <span>Sandbox-Modus is AKTIV. Es ist kein Proxy-Secret-Schutz auf den öffentlichen Endpunkten aktiv.</span>
-                    </div>
 
                     <!-- Proxy secret field -->
                     <div class="space-y-2">

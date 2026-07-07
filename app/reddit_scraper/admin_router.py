@@ -648,7 +648,6 @@ async def admin_settings_get(
 async def admin_settings_post(
     api: str = "reddit",
     rapidapi_proxy_secret: str = Form(None),
-    sandbox_mode: bool = Form(False),
     rapidapi_key: str = Form(None),
     rapidapi_host: str = Form(None),
     rotating_proxy_url: str = Form(None),
@@ -663,7 +662,6 @@ async def admin_settings_post(
     # 1. Update JSON settings file
     settings = {
         "rapidapi_proxy_secret": (rapidapi_proxy_secret or "").strip(),
-        "sandbox_mode": sandbox_mode,
         "rapidapi_key": (rapidapi_key or "").strip(),
         "rapidapi_host": (rapidapi_host or "").strip(),
         "evomi_api_key": (evomi_api_key or "").strip(),

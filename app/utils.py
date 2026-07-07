@@ -34,7 +34,7 @@ def load_settings() -> dict:
                 return data
         except Exception:
             pass
-    return {"rapidapi_proxy_secret": "", "sandbox_mode": True, "evomi_api_key": ""}
+    return {"rapidapi_proxy_secret": "", "evomi_api_key": ""}
 
 def save_settings(settings: dict):
     os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
@@ -65,7 +65,6 @@ def check_rapidapi_access(request: Request):
         return
 
     settings = load_settings()
-    sandbox_mode = settings.get("sandbox_mode", True)
     
     # Path-basiertes Secret auswählen (Web vs Reddit)
     path = request.url.path
@@ -79,27 +78,9 @@ def check_rapidapi_access(request: Request):
         return
 
     request_secret = request.headers.get("x-rapidapi-proxy-secret")
-    is_secret_valid = bool(request_secret == secret)
-    
-    if sandbox_mode:
-        sub = request.headers.get("x-sandbox-subscription") or request.headers.get("x-rapidapi-subscription") or ""
-        sub_lower = sub.lower()
-        
-        is_sub_valid = False
-        # Prüfen, ob das Wort basic, pro, ultra oder mega im String enthalten ist
-        for plan_name in ["basic", "pro", "ultra", "mega"]:
-            if plan_name in sub_lower:
-                is_sub_valid = True
-                break
-        
-        if not (is_sub_valid or is_secret_valid):
-            raise HTTPException(
-                status_code=403,
-                detail="Invalid X-RapidAPI-Proxy-Secret or invalid X-RapidAPI-Subscription plan."
-            )
-    else:
-        if not is_secret_valid:
-            raise HTTPException(
-                status_code=403,
-                detail="Invalid X-RapidAPI-Proxy-Secret header."
-            )
+    if request_secret != secret:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid X-RapidAPI-Proxy-Secret header."
+        )
+
