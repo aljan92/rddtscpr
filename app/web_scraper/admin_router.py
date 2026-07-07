@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db, WebScraperRequestLog, SystemSetting
 from app.web_scraper.queue_manager import web_scrape_queue
-from app.utils import verify_admin, load_settings, save_settings
+from app.utils import verify_admin, load_settings, save_settings, get_admin_token
 
 logger = logging.getLogger("rddtscpr.web_admin_router")
 
@@ -78,7 +78,11 @@ async def web_admin_playground(
     username: str = Depends(verify_admin)
 ):
     settings = load_settings()
-    return templates.TemplateResponse("web/playground.html", {"request": request, "settings": settings})
+    return templates.TemplateResponse("web/playground.html", {
+        "request": request,
+        "settings": settings,
+        "admin_token": get_admin_token()
+    })
 
 @router.get("/admin/web-scraper/settings")
 async def web_admin_settings_get(

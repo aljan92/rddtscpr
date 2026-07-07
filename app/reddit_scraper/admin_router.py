@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db, APIRequestLog, RedditAccount, SystemSetting
 from app.reddit_scraper.auth import get_session_info_from_state, login_to_reddit
 from app.reddit_scraper.queue_manager import scrape_queue
-from app.utils import verify_admin, load_settings, save_settings
+from app.utils import verify_admin, load_settings, save_settings, get_admin_token
 
 logger = logging.getLogger("rddtscpr.reddit_admin_router")
 
@@ -459,7 +459,11 @@ async def admin_playground(
     username: str = Depends(verify_admin)
 ):
     settings = load_settings()
-    return templates.TemplateResponse("reddit/playground.html", {"request": request, "settings": settings})
+    return templates.TemplateResponse("reddit/playground.html", {
+        "request": request,
+        "settings": settings,
+        "admin_token": get_admin_token()
+    })
 
 @router.get("/admin/rapidapi-playground", response_class=HTMLResponse)
 async def admin_rapidapi_playground(

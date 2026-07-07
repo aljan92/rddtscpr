@@ -366,6 +366,7 @@
                 const headers = {};
                 const selectedPlan = document.getElementById("plan-select").value;
                 headers["X-RapidAPI-Subscription"] = selectedPlan;
+                headers["X-Admin-Token"] = "{{ admin_token }}";
 
                 const response = await fetch(url, { headers: headers });
                 const status = response.status;

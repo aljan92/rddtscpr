@@ -155,15 +155,7 @@
                         <input id="opt-block-media" type="checkbox" checked class="accent-scraper-emerald w-4 h-4 cursor-pointer">
                     </div>
                     
-                    <!-- Wait Until -->
-                    <div class="space-y-1">
-                        <span class="font-medium text-slate-300">Warte-Bedingung (Wait Until)</span>
-                        <select id="opt-wait-until" class="w-full bg-scraper-dark border border-scraper-border rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-scraper-emerald">
-                            <option value="networkidle">networkidle (Keine Anfragen)</option>
-                            <option value="load">load (Komplett geladen)</option>
-                            <option value="domcontentloaded">domcontentloaded (DOM geladen)</option>
-                        </select>
-                    </div>
+
 
                     <!-- Wait For Selector -->
                     <div class="space-y-1">
@@ -352,7 +344,6 @@
                     include_screenshot: document.getElementById("filter-screenshot").checked
                 },
                 block_media: document.getElementById("opt-block-media").checked,
-                wait_until: document.getElementById("opt-wait-until").value,
                 wait_for_selector: document.getElementById("opt-wait-for-selector").value || null,
                 page_crawling: document.getElementById("opt-page-crawling").checked,
                 max_crawl_depth: parseInt(document.getElementById("opt-max-depth").value),
@@ -370,7 +361,8 @@
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        "X-RapidAPI-Subscription": selectedPlan
+                        "X-RapidAPI-Subscription": selectedPlan,
+                        "X-Admin-Token": "{{ admin_token }}"
                     },
                     body: JSON.stringify(payload)
                 });

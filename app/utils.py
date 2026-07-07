@@ -43,7 +43,17 @@ def save_settings(settings: dict):
     with open(SETTINGS_FILE, "w") as f:
         json.dump(current, f, indent=2)
 
+def get_admin_token() -> str:
+    import hashlib
+    admin_pass = os.getenv("ADMIN_PASSWORD", "admin123")
+    return hashlib.sha256(admin_pass.encode()).hexdigest()
+
 def is_admin_request(request: Request) -> bool:
+    # First check X-Admin-Token header to bypass browser basic auth caching limits
+    admin_token = request.headers.get("x-admin-token") or request.headers.get("X-Admin-Token")
+    if admin_token and admin_token == get_admin_token():
+        return True
+
     auth_header = request.headers.get("Authorization") or request.headers.get("authorization")
     if not auth_header:
         return False

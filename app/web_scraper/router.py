@@ -39,6 +39,33 @@ async def api_web_scrape(
             detail="webhook_url ist erforderlich, wenn delivery_mode 'webhook' oder 'both' ist."
         )
 
+    # Check subscription for premium features (Crawling, Chunking, Screenshots)
+    has_crawling = payload.page_crawling
+    has_chunking = payload.chunk_size is not None
+    has_screenshot = payload.response_filters.include_screenshot if payload.response_filters else False
+
+    if has_crawling or has_chunking or has_screenshot:
+        subscription = request.headers.get("x-rapidapi-subscription") or ""
+        sub_str = subscription.lower()
+        is_premium = any(p in sub_str for p in ["pro", "ultra", "mega"])
+        
+        if not is_premium:
+            if has_crawling:
+                raise HTTPException(
+                    status_code=403,
+                    detail="The 'page_crawling' feature is restricted to Pro, Mega, and Ultra plans. Please upgrade your subscription."
+                )
+            if has_chunking:
+                raise HTTPException(
+                    status_code=403,
+                    detail="The 'chunking' feature is restricted to Pro, Mega, and Ultra plans. Please upgrade your subscription."
+                )
+            if has_screenshot:
+                raise HTTPException(
+                    status_code=403,
+                    detail="The 'include_screenshot' feature is restricted to Pro, Mega, and Ultra plans. Please upgrade your subscription."
+                )
+
     is_playground = request.query_params.get("playground") == "true"
     
     try:

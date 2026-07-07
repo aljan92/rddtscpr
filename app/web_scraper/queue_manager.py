@@ -175,8 +175,8 @@ class WebScrapeQueueManager:
             # Starte Scraper
             result = await run_crawler_pipeline(request.request_params, rotating_proxy, request.id)
             status_code = result["meta"]["status"]
-            proxy_used = result.get("proxy_used", "Dynamisch")
-            stealth_active = result.get("stealth_active", False)
+            proxy_used = result.pop("proxy_used", "Dynamisch")
+            stealth_active = result.pop("stealth_active", False)
             request.status = "Erfolgreich"
             
             # Resolve future für direct mode
@@ -199,9 +199,10 @@ class WebScrapeQueueManager:
         self.active_requests.pop(request.id, None)
 
         # In DB speichern und Webhook feuern falls nicht Playground
-        if not request.is_playground:
-            try:
-                with SessionLocal() as db:
+        try:
+            with SessionLocal() as db:
+                # Job-Ergebnis nur für Nicht-Playground-Requests speichern
+                if not request.is_playground:
                     db_job = db.query(WebScraperJob).filter(WebScraperJob.id == request.id).first()
                     if db_job:
                         db_job.status = request.status
@@ -211,33 +212,33 @@ class WebScrapeQueueManager:
                         else:
                             db_job.error_message = error_msg
                         db.commit()
-                        
-                    # Request Log schreiben
-                    log_entry = WebScraperRequestLog(
-                        url=request.url,
-                        status_code=status_code,
-                        response_time_ms=duration,
-                        proxy_used=proxy_used,
-                        stealth_mode_active=stealth_active,
-                        error_message=error_msg
-                    )
-                    db.add(log_entry)
-                    db.commit()
-            except Exception as db_err:
-                logger.error(f"Fehler beim Schreiben des Job-Ergebnisses in DB: {db_err}")
+                    
+                # Request Log IMMER schreiben (auch für Playground)
+                log_entry = WebScraperRequestLog(
+                    url=request.url,
+                    status_code=status_code,
+                    response_time_ms=duration,
+                    proxy_used=proxy_used,
+                    stealth_mode_active=stealth_active,
+                    error_message=error_msg
+                )
+                db.add(log_entry)
+                db.commit()
+        except Exception as db_err:
+            logger.error(f"Fehler beim Schreiben des Job-Ergebnisses in DB: {db_err}")
 
-            # Webhook POST ausführen
-            if request.request_params.delivery_mode in ["webhook", "both"] and request.request_params.webhook_url:
-                webhook_payload = {
-                    "job_id": request.id,
-                    "url": request.url,
-                    "status": request.status,
-                    "completed_at": request.completed_at.isoformat() if request.completed_at else None,
-                    "error": error_msg,
-                    "data": result if request.status == "Erfolgreich" else None
-                }
-                # Im Hintergrund senden, um den Worker nicht zu blockieren
-                asyncio.create_task(self._send_webhook(request.request_params.webhook_url, webhook_payload))
+        # Webhook POST ausführen (nur für Nicht-Playground-Requests)
+        if not request.is_playground and request.request_params.delivery_mode in ["webhook", "both"] and request.request_params.webhook_url:
+            webhook_payload = {
+                "job_id": request.id,
+                "url": request.url,
+                "status": request.status,
+                "completed_at": request.completed_at.isoformat() if request.completed_at else None,
+                "error": error_msg,
+                "data": result if request.status == "Erfolgreich" else None
+            }
+            # Im Hintergrund senden, um den Worker nicht zu blockieren
+            asyncio.create_task(self._send_webhook(request.request_params.webhook_url, webhook_payload))
 
     async def _send_webhook(self, url: str, payload: dict):
         headers = {"Content-Type": "application/json"}
