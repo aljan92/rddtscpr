@@ -370,30 +370,7 @@
                         </div>
                     </div>
 
-                    <!-- Queue settings -->
-                    <div class="border-t border-reddit-border/30 pt-6 space-y-4">
-                        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
-                            <i data-lucide="sliders" class="w-4 h-4 text-reddit-orange"></i>
-                            <span>Queue- und Cooldown-Einstellungen (Reddit)</span>
-                        </h3>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div class="space-y-2">
-                                <label for="cooldown_mode" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">Cooldown-Modus</label>
-                                <select name="cooldown_mode" id="cooldown_mode" class="w-full bg-reddit-dark/50 border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-reddit-orange transition-all duration-200">
-                                    <option value="auto" {% if cooldown_mode == 'auto' %}selected{% endif %}>Automatisch (Adaptive)</option>
-                                    <option value="fixed" {% if cooldown_mode == 'fixed' %}selected{% endif %}>Fest (Manuell)</option>
-                                </select>
-                            </div>
-                            <div class="space-y-2">
-                                <label for="cooldown_seconds" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">Manuelle Pause (Sek.)</label>
-                                <input type="number" step="0.5" name="cooldown_seconds" id="cooldown_seconds" value="{{ cooldown_seconds }}" class="w-full bg-reddit-dark/50 border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-reddit-orange transition-all duration-200">
-                            </div>
-                            <div class="space-y-2">
-                                <label for="max_accountless_sessions" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">Max. Accountlose Sessions</label>
-                                <input type="number" name="max_accountless_sessions" id="max_accountless_sessions" value="{{ max_accountless_sessions }}" class="w-full bg-reddit-dark/50 border border-reddit-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-reddit-orange transition-all duration-200">
-                            </div>
-                        </div>
-                    </div>
+
                 </div>
 
                 <!-- Reset Statistics Card -->
@@ -478,19 +455,7 @@
                         </div>
                     </div>
 
-                    <!-- Worker settings -->
-                    <div class="border-t border-scraper-border/30 pt-6 space-y-4">
-                        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
-                            <i data-lucide="sliders" class="w-4 h-4 text-scraper-emerald"></i>
-                            <span>Parallelitäts-Einstellungen (Web Scraper)</span>
-                        </h3>
-                        <div class="space-y-2">
-                            <label for="web_scraper_max_workers" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">Max. Parallele Sessions (Workers)</label>
-                            <input type="number" min="1" max="20" name="web_scraper_max_workers" id="web_scraper_max_workers" value="{{ web_scraper_max_workers }}"
-                                   class="w-full bg-reddit-dark/50 border border-scraper-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-scraper-emerald transition-all duration-200 max-w-[200px]">
-                            <p class="text-[10px] text-slate-500">Die Anzahl an parallel laufenden Headless Browsern, die Webseiten gleichzeitig verarbeiten.</p>
-                        </div>
-                    </div>
+
                 </div>
 
                 <!-- Reset Statistics Card -->

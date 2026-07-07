@@ -71,8 +71,6 @@ def check_rapidapi_access(request: Request):
     path = request.url.path
     if path.startswith("/v1/web/"):
         secret = settings.get("web_rapidapi_proxy_secret", "")
-        if not secret or not secret.strip():
-            secret = settings.get("rapidapi_proxy_secret", "")
     else:
         secret = settings.get("rapidapi_proxy_secret", "")
         
