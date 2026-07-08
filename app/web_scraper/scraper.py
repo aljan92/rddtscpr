@@ -230,7 +230,12 @@ def is_bot_blocked(status_code: int, title: str, html_content: str) -> bool:
         "class=\"g-recaptcha\"",
         "class=\"cf-turnstile\"",
         "hcaptcha.com/getcaptcha",
-        "challenges.cloudflare.com"
+        "challenges.cloudflare.com",
+        "unusual activity",
+        "automated traffic",
+        "unidentified, automated",
+        "don't have permission to access",
+        "access denied"
     ]
     if any(marker in html_lower for marker in block_markers):
         return True
