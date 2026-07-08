@@ -27,7 +27,7 @@ class BotBlockException(Exception):
         self.proxy_used = proxy_used
 
 # Typical user agents and default headers
-DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.26 Safari/537.36"
 
 def get_proxy_urls(rotating_proxy_url: str) -> tuple[Optional[str], Optional[str]]:
     """
@@ -130,7 +130,8 @@ async def launch_stealth_browser(
     browser_args = [
         "--no-sandbox",
         "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage"
+        "--disable-dev-shm-usage",
+        "--disable-blink-features=AutomationControlled"
     ]
     
     browser = await p.chromium.launch(
