@@ -212,7 +212,10 @@ class WebScrapeQueueManager:
                 # Starte Scraping Pipeline
                 # Speichere Task-Referenz für eventuellen Abbruch
                 request.task = asyncio.create_task(self._process_scrape(request))
-                await request.task
+                try:
+                    await request.task
+                except asyncio.CancelledError:
+                    logger.warning(f"Worker {worker_id}: Scrape-Task für Job {request.id} wurde extern abgebrochen.")
                 
                 self.queue.task_done()
                 
@@ -236,8 +239,11 @@ class WebScrapeQueueManager:
         stealth_active = False
         
         try:
-            # Starte Scraper
-            result = await run_crawler_pipeline(request.request_params, rotating_proxy, request.id)
+            # Starte Scraper mit hartem Timeout von 90 Sekunden
+            result = await asyncio.wait_for(
+                run_crawler_pipeline(request.request_params, rotating_proxy, request.id),
+                timeout=90.0
+            )
             status_code = result["meta"]["status"]
             proxy_used = result.pop("proxy_used", "Dynamisch")
             stealth_active = result.pop("stealth_active", False)
@@ -247,6 +253,16 @@ class WebScrapeQueueManager:
             if not request.future.done():
                 request.future.set_result((result, proxy_used, stealth_active))
                 
+        except asyncio.CancelledError as ce:
+            status_code = 499
+            error_msg = "Task wurde extern abgebrochen (z.B. durch Watchdog-Timeout nach 120s)."
+            request.status = "Fehlgeschlagen"
+            logger.warning(f"Watchdog: Scrape-Task für {request.url} abgebrochen.")
+            
+            if not request.future.done():
+                request.future.set_exception(ce)
+            raise ce
+            
         except Exception as e:
             status_code = 500
             error_msg = str(e)
@@ -406,6 +422,15 @@ class WebScrapeQueueManager:
         while self._running:
             try:
                 await asyncio.sleep(1.0)
+                
+                # Watchdog: Bereinige hängende Tasks, die älter als 120 Sekunden sind
+                now_dt = datetime.utcnow()
+                for req in list(self.active_requests.values()):
+                    if req.status == "Scraping" and req.task and not req.task.done():
+                        age = (now_dt - req.created_at).total_seconds()
+                        if age > 120.0:
+                            logger.warning(f"Watchdog: Scrape-Task für Job {req.id} hängt seit {age:.1f}s. Breche ab.")
+                            req.task.cancel()
                 
                 active_count = len([r for r in self.active_requests.values() if r.status == "Scraping"])
                 q_len = len([r for r in self.active_requests.values() if r.status == "Wartend"])
