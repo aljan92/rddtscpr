@@ -309,8 +309,17 @@ async def scrape_single_page(
                     )
                     
                     # Navigation
-                    wait_until_option = "networkidle" if request.wait_until == "networkidle" else ("load" if request.wait_until == "load" else "domcontentloaded")
-                    response = await page.goto(url, wait_until=wait_until_option, timeout=30000)
+                    wait_until_option = request.wait_until
+                    if wait_until_option == "auto":
+                        response = await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                        try:
+                            # Intelligentes Kurz-Warten auf Netzwerkruhe (max. 3 Sekunden)
+                            await page.wait_for_load_state("networkidle", timeout=3000)
+                        except Exception:
+                            pass
+                    else:
+                        playwright_wait = "networkidle" if wait_until_option == "networkidle" else ("load" if wait_until_option == "load" else "domcontentloaded")
+                        response = await page.goto(url, wait_until=playwright_wait, timeout=30000)
                     status_code = response.status if response else 200
                     
                     # Warten auf Selector falls spezifiziert
@@ -361,8 +370,17 @@ async def scrape_single_page(
                     block_media=request.block_media
                 )
                 
-                wait_until_option = "networkidle" if request.wait_until == "networkidle" else ("load" if request.wait_until == "load" else "domcontentloaded")
-                response = await page.goto(url, wait_until=wait_until_option, timeout=35000)
+                wait_until_option = request.wait_until
+                if wait_until_option == "auto":
+                    response = await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                    try:
+                        # Intelligentes Kurz-Warten auf Netzwerkruhe (max. 3 Sekunden)
+                        await page.wait_for_load_state("networkidle", timeout=3000)
+                    except Exception:
+                        pass
+                else:
+                    playwright_wait = "networkidle" if wait_until_option == "networkidle" else ("load" if wait_until_option == "load" else "domcontentloaded")
+                    response = await page.goto(url, wait_until=playwright_wait, timeout=35000)
                 status_code = response.status if response else 200
                 
                 if request.wait_for_selector:
