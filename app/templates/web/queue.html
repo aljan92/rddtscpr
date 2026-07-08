@@ -142,6 +142,14 @@
                                    class="w-full bg-scraper-dark/50 border border-scraper-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-scraper-emerald focus:ring-1 focus:ring-scraper-emerald transition-all duration-200 font-medium">
                         </div>
 
+                        <div>
+                            <label for="max_capacity" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                                Max. Parallele Sessions (Limit)
+                            </label>
+                            <input type="number" min="1" max="100" name="max_capacity" id="max_capacity" value="{{ max_capacity if max_capacity is defined else 20 }}"
+                                   class="w-full bg-scraper-dark/50 border border-scraper-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-scraper-emerald focus:ring-1 focus:ring-scraper-emerald transition-all duration-200 font-medium">
+                        </div>
+
                         <button type="submit" class="w-full bg-scraper-emerald hover:bg-emerald-400 text-scraper-dark font-bold py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center space-x-2 shadow-lg shadow-scraper-emerald/20">
                             <i data-lucide="save" class="w-4 h-4"></i>
                             <span>Speichern</span>
@@ -198,7 +206,7 @@
                                 <span>Aktive Sessions:</span>
                             </span>
                             <span class="text-white font-medium">
-                                <strong id="stat-current-workers">{{ stats.current_workers if stats.current_workers is defined else stats.active }}</strong> / <strong id="stat-max-workers">{{ stats.max_workers }}</strong> <span class="text-slate-500 text-[10px]">(Max 100)</span>
+                                <strong id="stat-current-workers">{{ stats.current_workers if stats.current_workers is defined else stats.active }}</strong> / <strong id="stat-max-capacity">{{ stats.max_capacity if stats.max_capacity is defined else 20 }}</strong> <span class="text-slate-500 text-[10px]">(Basis: <strong id="stat-basis-workers" class="text-slate-400 font-normal">{{ stats.max_workers }}</strong>)</span>
                             </span>
                         </div>
                     </div>
@@ -376,8 +384,11 @@
                 if (data.stats.current_workers !== undefined) {
                     document.getElementById('stat-current-workers').innerText = data.stats.current_workers;
                 }
+                if (data.stats.max_capacity !== undefined) {
+                    document.getElementById('stat-max-capacity').innerText = data.stats.max_capacity;
+                }
                 if (data.stats.max_workers !== undefined) {
-                    document.getElementById('stat-max-workers').innerText = data.stats.max_workers;
+                    document.getElementById('stat-basis-workers').innerText = data.stats.max_workers;
                 }
                 
                 // Update sparkline

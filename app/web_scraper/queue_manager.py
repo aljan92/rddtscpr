@@ -71,8 +71,19 @@ class WebScrapeQueueManager:
                         db.add(setting)
                         db.commit()
                         logger.info(f"Standard-Basis-Workers in DB angelegt: {self.min_workers}")
+                        
+                    # Max capacity aus Datenbank laden
+                    cap_setting = db.query(SystemSetting).filter(SystemSetting.key == "web_scraper_max_capacity").first()
+                    if cap_setting:
+                        self.max_capacity = int(cap_setting.value)
+                        logger.info(f"Web Scraper Max-Capacity aus DB geladen: {self.max_capacity}")
+                    else:
+                        cap_setting = SystemSetting(key="web_scraper_max_capacity", value=str(self.max_capacity))
+                        db.add(cap_setting)
+                        db.commit()
+                        logger.info(f"Standard-Max-Capacity in DB angelegt: {self.max_capacity}")
             except Exception as e:
-                logger.error(f"Fehler beim Laden von web_scraper_max_workers aus DB: {e}")
+                logger.error(f"Fehler beim Laden der Queue-Konfiguration aus DB: {e}")
 
             # Baseline Worker Pool starten
             self.worker_id_counter = 0

@@ -104,7 +104,8 @@ async def web_admin_queue(
     status = web_scrape_queue.get_queue_status()
     return templates.TemplateResponse("web/queue.html", {
         "request": request,
-        "max_workers": web_scrape_queue.max_workers,
+        "max_workers": web_scrape_queue.min_workers,
+        "max_capacity": web_scrape_queue.max_capacity,
         "stats": status["stats"],
         "requests": status["requests"]
     })
@@ -112,19 +113,35 @@ async def web_admin_queue(
 @router.post("/admin/web-scraper/queue/settings")
 async def web_admin_queue_settings(
     max_workers: int = Form(5),
+    max_capacity: int = Form(20),
     username: str = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
     if max_workers < 1 or max_workers > 100:
         return RedirectResponse(url="/admin/web-scraper/queue?error=Basis-Workers+muss+zwischen+1+und+100+liegen.", status_code=303)
+    if max_capacity < max_workers or max_capacity > 100:
+        return RedirectResponse(url=f"/admin/web-scraper/queue?error=Max-Kapazität+muss+mindestens+so+groß+wie+Basis-Sessions+({max_workers})+und+maximal+100+sein.", status_code=303)
     try:
+        web_scrape_queue.min_workers = max_workers
+        web_scrape_queue.max_capacity = max_capacity
         web_scrape_queue.resize_worker_pool(max_workers)
+        
+        # Save Basis-Workers
         setting = db.query(SystemSetting).filter(SystemSetting.key == "web_scraper_max_workers").first()
         if setting:
             setting.value = str(max_workers)
         else:
             setting = SystemSetting(key="web_scraper_max_workers", value=str(max_workers))
             db.add(setting)
+            
+        # Save Max-Capacity
+        cap_setting = db.query(SystemSetting).filter(SystemSetting.key == "web_scraper_max_capacity").first()
+        if cap_setting:
+            cap_setting.value = str(max_capacity)
+        else:
+            cap_setting = SystemSetting(key="web_scraper_max_capacity", value=str(max_capacity))
+            db.add(cap_setting)
+            
         db.commit()
         return RedirectResponse(url="/admin/web-scraper/queue?success=Einstellungen+erfolgreich+gespeichert!", status_code=303)
     except Exception as e:
