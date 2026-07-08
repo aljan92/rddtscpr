@@ -40,7 +40,7 @@ def get_proxy_urls(rotating_proxy_url: str) -> tuple[Optional[str], Optional[str
 def inject_proxy_country(proxy_url: str, country_code: str) -> str:
     """
     Injektiert das Country-Targeting in die Proxy-URL für Evomi.
-    Format: http://username_country-US:password@host:port
+    Format: http://username:password_country-us@host:port
     """
     if not proxy_url or not country_code:
         return proxy_url
@@ -49,15 +49,14 @@ def inject_proxy_country(proxy_url: str, country_code: str) -> str:
     if not parsed.username or not parsed.password:
         return proxy_url
         
-    # Wir fügen _country-XX an den Username an (Standard für Evomi)
-    # Falls bereits ein Country-Code im Usernamen steht, ersetzen wir ihn
-    username = parsed.username
-    if "_country-" in username:
-        username = re.sub(r"_country-[A-Z]{2}", f"_country-{country_code.upper()}", username)
+    # Wir fügen _country-xx an das Passwort an (Standard für Evomi)
+    password = parsed.password
+    if "_country-" in password:
+        password = re.sub(r"_country-[a-zA-Z]{2}", f"_country-{country_code.lower()}", password)
     else:
-        username = f"{username}_country-{country_code.upper()}"
+        password = f"{password}_country-{country_code.lower()}"
         
-    netloc = f"{username}:{parsed.password}@{parsed.hostname}:{parsed.port}"
+    netloc = f"{parsed.username}:{password}@{parsed.hostname}:{parsed.port}"
     return parsed._replace(netloc=netloc).geturl()
 
 def inject_proxy_session(proxy_url: str, session_id: str) -> str:
@@ -71,13 +70,13 @@ def inject_proxy_session(proxy_url: str, session_id: str) -> str:
     if not parsed.username or not parsed.password:
         return proxy_url
         
-    username = parsed.username
-    if "_session-" in username:
-        username = re.sub(r"_session-\w+", f"_session-{session_id}", username)
+    password = parsed.password
+    if "_session-" in password:
+        password = re.sub(r"_session-\w+", f"_session-{session_id}", password)
     else:
-        username = f"{username}_session-{session_id}"
+        password = f"{password}_session-{session_id}"
         
-    netloc = f"{username}:{parsed.password}@{parsed.hostname}:{parsed.port}"
+    netloc = f"{parsed.username}:{password}@{parsed.hostname}:{parsed.port}"
     return parsed._replace(netloc=netloc).geturl()
 
 def parse_playwright_proxy(proxy_url: str) -> Optional[dict]:
