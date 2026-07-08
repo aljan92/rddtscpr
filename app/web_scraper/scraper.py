@@ -568,8 +568,8 @@ async def scrape_single_page(
                 
                 # We either succeeded, or we are on the final attempt (where we have to return the block page)
                 if is_blocked:
-                    status_detail = f"Access denied (status {status_code}). Gated by bot detection or rate limit."
-                    logger.warning(f"Access denied on final attempt (status {status_code}) for {url}")
+                    status_detail = f"Access denied (status {status_code}) on {attempt['name']}. Gated by bot detection or rate limit."
+                    logger.warning(f"Access denied on final attempt (status {status_code}) using {attempt['name']} for {url}")
                 else:
                     status_detail = None
                     success = True
