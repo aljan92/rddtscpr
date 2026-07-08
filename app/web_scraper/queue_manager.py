@@ -509,7 +509,9 @@ class WebScrapeQueueManager:
                 "global_client_errors": client_error_requests,
                 "global_timeouts": timeout_requests,
                 "global_avg_duration_ms": avg_duration_ms,
-                "max_workers": self.max_workers
+                "max_workers": self.min_workers,
+                "current_workers": len(self.worker_tasks),
+                "max_capacity": self.max_capacity
             },
             "requests": items,
             "logs": logs_json,
