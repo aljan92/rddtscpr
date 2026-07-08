@@ -188,6 +188,12 @@
                         <input type="text" id="webhook-url-input" placeholder="https://yourdomain.com/webhook" class="w-full bg-scraper-dark border border-scraper-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-scraper-emerald transition-all duration-200">
                     </div>
 
+                    <!-- Proxy Country Selector -->
+                    <div class="space-y-2">
+                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Proxy Country (Optional)</label>
+                        <input type="text" id="proxy-country-input" placeholder="z.B. US, DE, GB" maxlength="2" class="w-full bg-scraper-dark border border-scraper-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-scraper-emerald transition-all duration-200 text-sm uppercase">
+                    </div>
+
                     <div class="space-y-3 pt-2">
                         <div class="flex items-center space-x-2.5">
                             <input type="checkbox" id="block-media" checked class="w-4.5 h-4.5 bg-scraper-dark border border-scraper-border rounded accent-scraper-emerald focus:ring-scraper-emerald">
@@ -350,6 +356,7 @@
                 body = JSON.stringify({
                     url: document.getElementById('url-input').value,
                     delivery_mode: deliveryMode.value,
+                    proxy_country: document.getElementById('proxy-country-input').value.trim().toUpperCase() || null,
                     webhook_url: (deliveryMode.value === 'webhook' || deliveryMode.value === 'both') ? document.getElementById('webhook-url-input').value : null,
                     response_filters: response_filters,
                     block_media: document.getElementById('block-media').checked,

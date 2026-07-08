@@ -157,6 +157,12 @@
                     
 
 
+                    <!-- Proxy Country -->
+                    <div class="space-y-1">
+                        <span class="font-medium text-slate-300">Proxy Country (Optional)</span>
+                        <input id="opt-proxy-country" type="text" placeholder="z.B. US, DE, GB" maxlength="2" class="w-full bg-scraper-dark border border-scraper-border rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-scraper-emerald text-sm uppercase">
+                    </div>
+
                     <!-- Wait For Selector -->
                     <div class="space-y-1">
                         <span class="font-medium text-slate-300">Warte auf CSS-Selector (Optional)</span>
@@ -341,6 +347,7 @@
             const payload = {
                 url: url,
                 delivery_mode: "direct",
+                proxy_country: document.getElementById("opt-proxy-country").value.trim().toUpperCase() || null,
                 response_filters: {
                     include_markdown: document.getElementById("filter-md").checked,
                     include_html: document.getElementById("filter-html").checked,
