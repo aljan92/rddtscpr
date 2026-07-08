@@ -40,6 +40,7 @@ class WebScrapeQueueManager:
         self._running = False
         self.min_workers = 5  # Basis-Workers (dauerhaft aktiv)
         self.max_capacity = 100  # Maximale dynamische Kapazität
+        self.proxy_mode = "auto"  # "auto" (DC -> Retry with Res) or "stealth" (Direct Res)
         self.worker_id_counter = 0
         self.last_scale_up_time = 0.0
         self.active_requests = {}  # id -> WebScrapeRequest
@@ -59,7 +60,7 @@ class WebScrapeQueueManager:
         if not self._running:
             self._running = True
             
-            # Max workers (min_workers) aus Datenbank laden
+            # Configuration aus Datenbank laden
             try:
                 with SessionLocal() as db:
                     setting = db.query(SystemSetting).filter(SystemSetting.key == "web_scraper_max_workers").first()
@@ -82,6 +83,17 @@ class WebScrapeQueueManager:
                         db.add(cap_setting)
                         db.commit()
                         logger.info(f"Standard-Max-Capacity in DB angelegt: {self.max_capacity}")
+
+                    # Proxy mode aus Datenbank laden
+                    pm_setting = db.query(SystemSetting).filter(SystemSetting.key == "web_scraper_proxy_mode").first()
+                    if pm_setting:
+                        self.proxy_mode = pm_setting.value
+                        logger.info(f"Web Scraper Proxy-Mode aus DB geladen: {self.proxy_mode}")
+                    else:
+                        pm_setting = SystemSetting(key="web_scraper_proxy_mode", value=self.proxy_mode)
+                        db.add(pm_setting)
+                        db.commit()
+                        logger.info(f"Standard-Proxy-Mode in DB angelegt: {self.proxy_mode}")
             except Exception as e:
                 logger.error(f"Fehler beim Laden der Queue-Konfiguration aus DB: {e}")
 
