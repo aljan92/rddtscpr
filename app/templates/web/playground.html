@@ -278,8 +278,12 @@
                 </div>
 
                 <!-- Screenshot Image -->
-                <div id="tab-screenshot" class="hidden flex-grow flex items-center justify-center bg-scraper-dark/30 border border-scraper-border p-4 rounded-xl overflow-hidden">
+                <div id="tab-screenshot" class="hidden flex-grow flex flex-col items-center justify-center bg-scraper-dark/30 border border-scraper-border p-4 rounded-xl overflow-hidden space-y-4">
                     <img id="screenshot-img" src="" alt="Screenshot" class="max-h-[450px] object-contain rounded border border-scraper-border shadow-2xl">
+                    <a id="screenshot-download-btn" href="" download="screenshot.png" class="bg-scraper-emerald hover:bg-emerald-400 text-scraper-dark font-bold py-2 px-4 rounded-xl transition-all duration-200 flex items-center space-x-2 shadow-lg shadow-scraper-emerald/20">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        <span>Screenshot herunterladen</span>
+                    </a>
                 </div>
             </div>
         </div>
@@ -393,6 +397,7 @@
                     if (data.screenshot_url) {
                         // Die URL ist relativ, hole sie über den Host
                         document.getElementById("screenshot-img").src = data.screenshot_url;
+                        document.getElementById("screenshot-download-btn").href = data.screenshot_url;
                         btnSc.classList.remove("hidden");
                     } else {
                         btnSc.classList.add("hidden");
