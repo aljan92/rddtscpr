@@ -218,6 +218,59 @@ async def launch_stealth_browser(
     if use_stealth:
         await Stealth().apply_stealth_async(page)
         
+        # Apply advanced deep stealth overrides (WebGL GPU vendor, hardware concurrency, device memory, chrome runtime)
+        await page.add_init_script("""
+            // Spoof WebGL renderer to look like a standard Intel GPU instead of SwiftShader
+            try {
+                const getParameter = WebGLRenderingContext.prototype.getParameter;
+                WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                    // UNMASKED_VENDOR_WEBGL = 0x9245 (37445)
+                    if (parameter === 37445) {
+                        return 'Intel Inc.';
+                    }
+                    // UNMASKED_RENDERER_WEBGL = 0x9246 (37446)
+                    if (parameter === 37446) {
+                        return 'Intel(R) Iris(TM) Plus Graphics 640';
+                    }
+                    return getParameter.apply(this, arguments);
+                };
+            } catch (e) {}
+
+            try {
+                const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
+                WebGL2RenderingContext.prototype.getParameter = function(parameter) {
+                    if (parameter === 37445) {
+                        return 'Intel Inc.';
+                    }
+                    if (parameter === 37446) {
+                        return 'Intel(R) Iris(TM) Plus Graphics 640';
+                    }
+                    return getParameter2.apply(this, arguments);
+                };
+            } catch (e) {}
+
+            // Spoof hardware concurrency and device memory
+            Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+            Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+            
+            // Spoof chrome.runtime to exist (headless chrome normally deletes or lacks it)
+            if (!window.chrome) {
+                window.chrome = {};
+            }
+            if (!window.chrome.runtime) {
+                window.chrome.runtime = {
+                    PlatformOs: { MAC: 'mac', WIN: 'win', ANDROID: 'android', CROS: 'cros', LINUX: 'linux', OPENBSD: 'openbsd' },
+                    PlatformArch: { ARM: 'arm', ARM64: 'arm64', X86_32: 'x86-32', X86_64: 'x86-64' },
+                    PlatformNaclArch: { ARM: 'arm', X86_32: 'x86-32', X86_64: 'x86-64' },
+                    RequestUpdateCheckStatus: { THROTTLED: 'throttled', NO_UPDATE: 'no_update', UPDATE_AVAILABLE: 'update_available' },
+                    OnInstalledReason: { INSTALL: 'install', UPDATE: 'update', CHROME_UPDATE: 'chrome_update', SHARED_MODULE_UPDATE: 'shared_module_update' },
+                    OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
+                    connect: function() {},
+                    sendMessage: function() {}
+                };
+            }
+        """)
+        
     return browser, context, page
 
 def is_bot_blocked(status_code: int, title: str, html_content: str) -> bool:
@@ -793,9 +846,9 @@ def _build_playwright_attempts(
         proxy_mode = getattr(web_scrape_queue, "proxy_mode", "auto")
 
         if skip_datacenter:
-            # If Cloudflare was detected, we skip datacenter and untargeted residential attempts
-            # to ensure strict alignment between IP location and browser locale/timezone.
-            logger.info("Cloudflare detected: starting directly with country-targeted residential proxies.")
+            # If Cloudflare was detected, we skip datacenter but we still try the clean untargeted residential pool first.
+            logger.info("Cloudflare detected: starting directly with residential proxies, prioritizing clean default pool.")
+            attempts.append({"name": "Evomi Residential (Default)", "proxy_url": res_proxy, "country": None, "session": make_sess(), "use_stealth": True})
             attempts.append({"name": "Evomi Residential (DE)", "proxy_url": res_proxy, "country": "DE", "session": make_sess(), "use_stealth": True})
             attempts.append({"name": "Evomi Residential (US)", "proxy_url": res_proxy, "country": "US", "session": make_sess(), "use_stealth": True})
             attempts.append({"name": "Evomi Residential (GB)", "proxy_url": res_proxy, "country": "GB", "session": make_sess(), "use_stealth": True})
