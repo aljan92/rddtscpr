@@ -126,7 +126,6 @@ async def web_admin_queue_settings(
     if proxy_mode not in ["auto", "stealth"]:
         proxy_mode = "auto"
     try:
-        web_scrape_queue.min_workers = max_workers
         web_scrape_queue.max_capacity = max_capacity
         web_scrape_queue.proxy_mode = proxy_mode
         web_scrape_queue.resize_worker_pool(max_workers)

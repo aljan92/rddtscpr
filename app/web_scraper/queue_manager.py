@@ -597,7 +597,14 @@ class WebScrapeQueueManager:
                     w_id = self.worker_id_counter
                     self.worker_id_counter += 1
                     self.worker_tasks.append(asyncio.create_task(self._worker_loop(w_id)))
-            # Wenn der neue Baseline-Wert kleiner ist, beenden sich überschüssige dynamic Worker bei Inaktivität selbst.
+            # Wenn der neue Baseline-Wert kleiner ist, beenden wir überschüssige Worker sofort
+            elif new_size < current_count:
+                excess = current_count - new_size
+                logger.info(f"Basis-Worker verringert. Beende {excess} excess Worker...")
+                for _ in range(excess):
+                    if self.worker_tasks:
+                        task = self.worker_tasks.pop()
+                        task.cancel()
 
 # Globaler Queue Manager für Web Scraper
 web_scrape_queue = WebScrapeQueueManager()
