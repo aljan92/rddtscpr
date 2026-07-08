@@ -505,7 +505,15 @@
                                     <span title="${log.target}">${log.target}</span>
                                 </td>
                                 <td class="p-4">${methodBadge}</td>
-                                <td class="p-4 font-mono text-slate-300">${log.response_time_ms} ms</td>
+                                <td class="p-4 font-mono text-slate-300">
+                                    <div class="flex flex-col space-y-0.5">
+                                        <span class="text-white font-medium">${log.response_time_ms} ms</span>
+                                        <span class="text-slate-500 text-[10px] whitespace-nowrap">
+                                            Warten: ${log.wait_time_ms} ms | 
+                                            Scrape: ${log.processing_time_ms} ms
+                                        </span>
+                                    </div>
+                                </td>
                                 <td class="p-4">${statusBadge}</td>
                             </tr>
                         `;

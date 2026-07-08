@@ -509,6 +509,8 @@ class WebScrapeQueueManager:
                         "target": log.url,
                         "method_used": "STEALTH" if log.stealth_mode_active else "NORMAL",
                         "response_time_ms": log.response_time_ms,
+                        "wait_time_ms": log.wait_time_ms if log.wait_time_ms is not None else 0,
+                        "processing_time_ms": log.processing_time_ms if log.processing_time_ms is not None else log.response_time_ms,
                         "status_code": log.status_code,
                         "error_message": log.error_message or ""
                     })
