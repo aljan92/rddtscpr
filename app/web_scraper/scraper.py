@@ -231,8 +231,8 @@ async def dismiss_cookie_banners(page: Page):
 
 def check_login_wall(url: str, html_content: str) -> Optional[str]:
     """
-    Prüft, ob die Seite hinter einer Login-Schranke liegt.
-    Gibt eine verständliche Fehlermeldung zurück, falls erkannt, sonst None.
+    Checks if the page is gated behind a login wall.
+    Returns a clear warning message if detected, otherwise None.
     """
     url_lower = url.lower()
     html_lower = html_content.lower()
@@ -240,22 +240,22 @@ def check_login_wall(url: str, html_content: str) -> Optional[str]:
     # 1. X.com / Twitter
     if "x.com" in url_lower or "twitter.com" in url_lower:
         if "onboarding" in html_lower or "/i/flow/login" in html_lower or "signup" in html_lower:
-            return "Login-Wall von X.com erkannt. Inhalte sind eingeschränkt. Bitte Session-Cookies übergeben."
+            return "Login wall detected on X.com. Content is restricted. Please provide session cookies."
             
     # 2. Instagram
     elif "instagram.com" in url_lower:
         if "/accounts/login" in html_lower or "login" in html_lower:
-            return "Login-Wall von Instagram erkannt. Bitte Session-Cookies übergeben."
+            return "Login wall detected on Instagram. Please provide session cookies."
             
     # 3. Facebook
     elif "facebook.com" in url_lower:
         if "/login" in html_lower or "facebook.com/login" in html_lower:
-            return "Login-Wall von Facebook erkannt. Bitte Session-Cookies übergeben."
+            return "Login wall detected on Facebook. Please provide session cookies."
             
     # 4. LinkedIn
     elif "linkedin.com" in url_lower:
         if "/login" in html_lower or "linkedin.com/signup" in html_lower:
-            return "Login-Wall von LinkedIn erkannt. Bitte Session-Cookies übergeben."
+            return "Login wall detected on LinkedIn. Please provide session cookies."
             
     return None
 
@@ -500,7 +500,7 @@ async def scrape_single_page(
                 html_content = await page.content()
                 
                 if is_bot_blocked(status_code, page_title, html_content):
-                    raise Exception(f"Zugriff verweigert (Status {status_code}). Trotz Residential Proxy blockiert.")
+                    raise Exception(f"Access denied (status {status_code}). Blocked despite using a residential proxy.")
                     
                 logger.info(f"Residential-Scraping erfolgreich für {url}")
                 
@@ -679,7 +679,7 @@ async def run_crawler_pipeline(
             crawled_pages_results.append({
                 "meta": {
                     "url": sub_url,
-                    "title": "Fehler beim Laden",
+                    "title": "Error loading page",
                     "description": "",
                     "status": 500,
                     "execution_time_ms": 0

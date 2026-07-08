@@ -30,13 +30,13 @@ async def api_web_scrape(
     if payload.delivery_mode not in ["direct", "webhook", "both"]:
         raise HTTPException(
             status_code=400,
-            detail="delivery_mode muss 'direct', 'webhook' oder 'both' sein."
+            detail="delivery_mode must be 'direct', 'webhook', or 'both'."
         )
 
     if payload.delivery_mode in ["webhook", "both"] and not payload.webhook_url:
         raise HTTPException(
             status_code=400,
-            detail="webhook_url ist erforderlich, wenn delivery_mode 'webhook' oder 'both' ist."
+            detail="webhook_url is required when delivery_mode is 'webhook' or 'both'."
         )
 
     # Check subscription for premium features (Crawling, Chunking, Screenshots)
@@ -106,7 +106,7 @@ async def api_web_job_status(
     if not job:
         raise HTTPException(
             status_code=404,
-            detail="Job-ID nicht gefunden oder bereits abgelaufen (älter als 24 Stunden)."
+            detail="Job ID not found or already expired (older than 24 hours)."
         )
 
     response_data = {
@@ -144,5 +144,5 @@ async def api_web_screenshot(
         
     raise HTTPException(
         status_code=404,
-        detail="Screenshot nicht gefunden oder bereits abgelaufen."
+        detail="Screenshot not found or already expired."
     )

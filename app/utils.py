@@ -17,7 +17,7 @@ def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
     if credentials.username != admin_user or credentials.password != admin_pass:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Ungültige Admin-Zugangsdaten.",
+            detail="Invalid admin credentials.",
             headers={"WWW-Authenticate": "Basic"},
         )
     return credentials.username
