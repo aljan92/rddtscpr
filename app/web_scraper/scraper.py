@@ -12,7 +12,7 @@ import markdownify
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 from playwright_stealth import Stealth
 
-from app.web_scraper.models import ScrapeRequest, ScrapeResponse, Metadata, ExtractedData
+from app.web_scraper.models import ScrapeRequest, ScrapeResponse, Metadata, ExtractedData, ResponseFilters
 
 logger = logging.getLogger("rddtscpr.web_scraper_engine")
 
@@ -61,7 +61,8 @@ async def launch_stealth_browser(
     use_stealth: bool = False,
     custom_headers: Optional[dict] = None,
     custom_cookies: Optional[list] = None,
-    block_media: bool = True
+    block_media: bool = True,
+    include_screenshot: bool = False
 ) -> tuple[Browser, BrowserContext, Page]:
     
     playwright_proxy = parse_playwright_proxy(proxy_url)
@@ -110,7 +111,19 @@ async def launch_stealth_browser(
     page = await context.new_page()
     
     if block_media:
-        await page.route("**/*", handle_resource_blocking)
+        # Wenn ein Screenshot benötigt wird, blockieren wir Stylesheets nicht,
+        # da sonst das Layout der Seite komplett zerstört wird.
+        blocked_resources = ["image", "media", "font"]
+        if not include_screenshot:
+            blocked_resources.append("stylesheet")
+            
+        async def handle_resource_blocking_local(route):
+            if route.request.resource_type in blocked_resources:
+                await route.abort()
+            else:
+                await route.continue_()
+                
+        await page.route("**/*", handle_resource_blocking_local)
         
     if use_stealth:
         await Stealth().apply_stealth_async(page)
@@ -156,6 +169,65 @@ async def auto_scroll_page(page: Page, max_scrolls: int = 10):
         new_height = await page.evaluate("document.body.scrollHeight")
         if new_height == prev_height:
             break
+
+async def dismiss_cookie_banners(page: Page):
+    """
+    Versucht, Cookie-Banner auf der Seite automatisch zu schließen,
+    indem nach bekannten Buttons gesucht wird.
+    """
+    selectors = [
+        # IDs/Klassen mit Cookie-Bezug (z.B. OneTrust, TrustArc, Cookiebot, Nike etc.)
+        "button.modal-actions-accept-btn:visible",
+        "#onetrust-accept-btn-handler:visible",
+        "#consent-accept:visible",
+        ".cookie-box-accept:visible",
+        "[id*='cookie-accept']:visible",
+        "[class*='cookie-accept']:visible",
+        "button[id*='accept']:visible",
+        "button[class*='accept']:visible",
+        "button[id*='cookie']:visible",
+        "button[class*='cookie']:visible",
+        "button[id*='consent']:visible",
+        "button[class*='consent']:visible",
+        "[role='button'][id*='accept']:visible",
+        "[role='button'][class*='accept']:visible",
+        
+        # Text-basierte Selektoren
+        "button:has-text('Alle akzeptieren'):visible",
+        "button:has-text('akzeptieren'):visible",
+        "button:has-text('Zustimmen'):visible",
+        "button:has-text('Alle zulassen'):visible",
+        "button:has-text('zulassen'):visible",
+        "button:has-text('Accept All'):visible",
+        "button:has-text('accept'):visible",
+        "button:has-text('Allow All'):visible",
+        "button:has-text('allow'):visible",
+        "button:has-text('Agree'):visible",
+        "button:has-text('I agree'):visible",
+        "button:has-text('Einverstanden'):visible",
+        "a:has-text('Alle akzeptieren'):visible",
+        "a:has-text('akzeptieren'):visible",
+        "a:has-text('Zustimmen'):visible",
+        "a:has-text('Accept All'):visible",
+        "a:has-text('accept'):visible",
+        "[role='button']:has-text('Alle akzeptieren'):visible",
+        "[role='button']:has-text('akzeptieren'):visible",
+        "[role='button']:has-text('Accept All'):visible",
+        "[role='button']:has-text('accept'):visible"
+    ]
+    
+    logger.info("Versuche Cookie-Banner zu schließen...")
+    for selector in selectors:
+        try:
+            # Playwright sucht auch im Shadow DOM nach diesen Selektoren
+            locator = page.locator(selector).first
+            if await locator.count() > 0:
+                logger.info(f"Cookie-Banner-Button gefunden: '{selector}'. Klicke darauf...")
+                await locator.click(timeout=3000)
+                # Kurzes Warten, bis der Banner verschwindet
+                await page.wait_for_timeout(1000)
+        except Exception as e:
+            pass
 
 async def pierce_shadow_dom_js(page: Page):
     """
@@ -305,7 +377,8 @@ async def scrape_single_page(
                         use_stealth=False,
                         custom_headers=request.custom_headers,
                         custom_cookies=request.custom_cookies,
-                        block_media=request.block_media
+                        block_media=request.block_media,
+                        include_screenshot=filters.include_screenshot
                     )
                     
                     # Navigation
@@ -367,7 +440,8 @@ async def scrape_single_page(
                     use_stealth=True,
                     custom_headers=request.custom_headers,
                     custom_cookies=request.custom_cookies,
-                    block_media=request.block_media
+                    block_media=request.block_media,
+                    include_screenshot=filters.include_screenshot
                 )
                 
                 wait_until_option = request.wait_until
@@ -400,6 +474,9 @@ async def scrape_single_page(
                 logger.info(f"Residential-Scraping erfolgreich für {url}")
                 
             # Ab hier haben wir die geladene Seite in 'page' und 'html_content'
+            
+            # Cookie Banner schließen
+            await dismiss_cookie_banners(page)
             
             # Auto-Scroll ausführen falls gewünscht (nur, wenn Medien nicht geblockt wurden, sonst macht scrollen wenig Sinn, oder falls der User es explizit will)
             # Wir scrollen standardmäßig maximal 5-mal
