@@ -18,6 +18,14 @@ from app.web_scraper.models import ScrapeRequest, ScrapeResponse, Metadata, Extr
 
 logger = logging.getLogger("rddtscpr.web_scraper_engine")
 
+class BotBlockException(Exception):
+    def __init__(self, message: str, status_code: int, html_content: str, page_title: str, proxy_used: str):
+        super().__init__(message)
+        self.status_code = status_code
+        self.html_content = html_content
+        self.page_title = page_title
+        self.proxy_used = proxy_used
+
 # Typical user agents and default headers
 DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
@@ -713,7 +721,13 @@ async def _run_playwright_attempt(
             # Bot-block check
             blocked = is_bot_blocked(status_code, page_title, html_content)
             if blocked:
-                raise Exception(f"Bot block (status {status_code}) on {attempt['name']}.")
+                raise BotBlockException(
+                    f"Bot block (status {status_code}) on {attempt['name']}.",
+                    status_code=status_code,
+                    html_content=html_content,
+                    page_title=page_title,
+                    proxy_used=attempt["name"]
+                )
 
             # Post-navigation processing
             await dismiss_cookie_banners(page)
@@ -813,13 +827,13 @@ def _try_curl_cffi_chain(
     request: ScrapeRequest,
     res_proxy: Optional[str],
     start_time: float,
-) -> Optional[tuple[int, str, str, str, str, Optional[str]]]:
+) -> tuple[Optional[tuple[int, str, str, str, str, Optional[str]]], Optional[dict]]:
     """
     Runs the curl_cffi retry chain.
-    Returns (status_code, html, title, final_url, proxy_used, country) on success.
-    Returns None if all attempts are blocked or fail.
+    Returns (success_tuple, last_block_dict).
     """
     countries = _build_cffi_country_chain(request)
+    last_block = None
     for country in countries:
         # Soft timeout check
         if time.time() - start_time > 70.0:
@@ -834,16 +848,26 @@ def _try_curl_cffi_chain(
             blocked = is_bot_blocked(status_code, title, html)
             if blocked:
                 logger.info(f"curl_cffi blocked (status {status_code}) with country={country_label}. Trying next...")
+                last_block = {
+                    "html_content": html,
+                    "url": final_url,
+                    "page_title": title,
+                    "status_code": status_code,
+                    "status_detail": f"Access denied (status {status_code}) on curl_cffi.",
+                    "proxy_used": f"curl_cffi (Residential {country_label})",
+                    "stealth_active": False,
+                    "scrape_engine": "curl_cffi"
+                }
                 continue
             if not is_meaningful_html(html):
                 logger.info(f"curl_cffi returned SPA skeleton with country={country_label}. Needs browser rendering.")
-                return None  # SPA detected — no point retrying curl_cffi
+                return None, last_block  # SPA detected — no point retrying curl_cffi
             proxy_name = f"curl_cffi (Residential {country_label})"
-            return status_code, html, title, final_url, proxy_name, country
+            return (status_code, html, title, final_url, proxy_name, country), None
         except Exception as e:
             logger.warning(f"curl_cffi attempt country={country_label} failed: {e}")
             continue
-    return None
+    return None, last_block
 
 
 # ---------------------------------------------------------------------------
@@ -877,16 +901,20 @@ async def scrape_single_page(
         or request.page_crawling
     )
 
+    last_block_page_data = None
+
     # ===================================================================
     #  FAST PATH: curl_cffi first, Playwright fallback
     # ===================================================================
     if not needs_browser:
         logger.info("Routing: Fast Path (curl_cffi first)")
 
-        cffi_result = _try_curl_cffi_chain(url, request, res_proxy, start_time)
+        cffi_success, cffi_block = _try_curl_cffi_chain(url, request, res_proxy, start_time)
+        if cffi_block:
+            last_block_page_data = cffi_block
 
-        if cffi_result is not None:
-            status_code, html, title, final_url, proxy_used, country = cffi_result
+        if cffi_success is not None:
+            status_code, html, title, final_url, proxy_used, country = cffi_success
             execution_time_ms = int((time.time() - start_time) * 1000)
             logger.info(f"curl_cffi succeeded in {execution_time_ms}ms using {proxy_used}")
             return build_result_from_html(
@@ -941,6 +969,19 @@ async def scrape_single_page(
             pw_status_detail = detail
             logger.info(f"Playwright succeeded using {attempt['name']} (status {status})")
             break
+        except BotBlockException as bbe:
+            logger.warning(f"Playwright attempt {idx+1} ({attempt['name']}) failed with bot block: {bbe}")
+            last_block_page_data = {
+                "html_content": bbe.html_content,
+                "url": url,
+                "page_title": bbe.page_title,
+                "status_code": bbe.status_code,
+                "status_detail": f"Access denied (status {bbe.status_code}) on {attempt['name']}. Gated by bot detection.",
+                "proxy_used": bbe.proxy_used,
+                "stealth_active": True,
+                "scrape_engine": "playwright"
+            }
+            pw_last_exception = bbe
         except Exception as err:
             logger.warning(f"Playwright attempt {idx+1} ({attempt['name']}) failed: {err}")
             pw_last_exception = err
@@ -967,9 +1008,12 @@ async def scrape_single_page(
     # ===================================================================
     if needs_browser:
         logger.info("Playwright failed on all proxies. Attempting curl_cffi cross-fallback...")
-        cffi_result = _try_curl_cffi_chain(url, request, res_proxy, start_time)
-        if cffi_result is not None:
-            status_code, html, title, final_url, proxy_used, country = cffi_result
+        cffi_success, cffi_block = _try_curl_cffi_chain(url, request, res_proxy, start_time)
+        if cffi_block:
+            last_block_page_data = cffi_block
+
+        if cffi_success is not None:
+            status_code, html, title, final_url, proxy_used, country = cffi_success
             execution_time_ms = int((time.time() - start_time) * 1000)
             fallback_detail = "Browser engine blocked by all proxies. Falling back to lightweight scraper. Screenshot unavailable for this target."
             logger.info(f"curl_cffi cross-fallback succeeded in {execution_time_ms}ms")
@@ -988,8 +1032,25 @@ async def scrape_single_page(
             )
 
     # ===================================================================
-    #  TOTAL FAILURE: Both engines failed
+    #  TOTAL FAILURE: Both engines failed (return last block page if any)
     # ===================================================================
+    if last_block_page_data:
+        execution_time_ms = int((time.time() - start_time) * 1000)
+        logger.warning(f"All scraper engines failed. Returning last block page from {last_block_page_data['scrape_engine']}")
+        return build_result_from_html(
+            html_content=last_block_page_data["html_content"],
+            url=last_block_page_data["url"],
+            page_title=last_block_page_data["page_title"],
+            status_code=last_block_page_data["status_code"],
+            request=request,
+            filters=filters,
+            execution_time_ms=execution_time_ms,
+            status_detail=last_block_page_data["status_detail"],
+            proxy_used=last_block_page_data["proxy_used"],
+            stealth_active=last_block_page_data["stealth_active"],
+            scrape_engine=last_block_page_data["scrape_engine"]
+        )
+
     if pw_last_exception:
         setattr(pw_last_exception, "proxy_used", pw_proxy_used)
         setattr(pw_last_exception, "stealth_active", True)
