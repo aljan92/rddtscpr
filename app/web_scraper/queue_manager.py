@@ -239,96 +239,97 @@ class WebScrapeQueueManager:
         stealth_active = False
         
         try:
-            # Starte Scraper mit hartem Timeout von 90 Sekunden
-            result = await asyncio.wait_for(
-                run_crawler_pipeline(request.request_params, rotating_proxy, request.id),
-                timeout=90.0
-            )
-            status_code = result["meta"]["status"]
-            proxy_used = result.pop("proxy_used", "Dynamisch")
-            stealth_active = result.pop("stealth_active", False)
-            request.status = "Erfolgreich"
-            
-            # Resolve future für direct mode
-            if not request.future.done():
-                request.future.set_result((result, proxy_used, stealth_active))
-                
-        except asyncio.CancelledError as ce:
-            status_code = 499
-            error_msg = "Task wurde extern abgebrochen (z.B. durch Watchdog-Timeout nach 120s)."
-            request.status = "Fehlgeschlagen"
-            logger.warning(f"Watchdog: Scrape-Task für {request.url} abgebrochen.")
-            
-            if not request.future.done():
-                request.future.set_exception(ce)
-            raise ce
-            
-        except Exception as e:
-            status_code = 500
-            error_msg = str(e)
-            request.status = "Fehlgeschlagen"
-            logger.error(f"Fehler beim Scraping von {request.url}: {e}")
-            
-            # Extract actual proxy and stealth active from exception properties
-            proxy_used = getattr(e, "proxy_used", proxy_used)
-            stealth_active = getattr(e, "stealth_active", stealth_active)
-            
-            if not request.future.done():
-                request.future.set_exception(e)
-                
-        # Durations berechnen
-        wait_duration_ms = int((start_time_dt - request.created_at).total_seconds() * 1000)
-        processing_duration_ms = int((time.time() - start_time) * 1000)
-        duration = wait_duration_ms + processing_duration_ms
-        
-        request.completed_at = datetime.utcnow()
-        
-        # Aus active_requests entfernen
-        self.active_requests.pop(request.id, None)
-
-        # In DB speichern und Webhook feuern falls nicht Playground
-        try:
-            with SessionLocal() as db:
-                # Job-Ergebnis nur für Nicht-Playground-Requests speichern
-                if not request.is_playground:
-                    db_job = db.query(WebScraperJob).filter(WebScraperJob.id == request.id).first()
-                    if db_job:
-                        db_job.status = request.status
-                        db_job.completed_at = request.completed_at
-                        if request.status == "Erfolgreich":
-                            db_job.result = json.dumps(result)
-                        else:
-                            db_job.error_message = error_msg
-                        db.commit()
-                    
-                # Request Log IMMER schreiben (auch für Playground)
-                log_entry = WebScraperRequestLog(
-                    url=request.url,
-                    status_code=status_code,
-                    response_time_ms=duration,
-                    wait_time_ms=wait_duration_ms,
-                    processing_time_ms=processing_duration_ms,
-                    proxy_used=proxy_used,
-                    stealth_mode_active=stealth_active,
-                    error_message=error_msg
+            try:
+                # Starte Scraper mit hartem Timeout von 90 Sekunden
+                result = await asyncio.wait_for(
+                    run_crawler_pipeline(request.request_params, rotating_proxy, request.id),
+                    timeout=90.0
                 )
-                db.add(log_entry)
-                db.commit()
-        except Exception as db_err:
-            logger.error(f"Fehler beim Schreiben des Job-Ergebnisses in DB: {db_err}")
+                status_code = result["meta"]["status"]
+                proxy_used = result.pop("proxy_used", "Dynamisch")
+                stealth_active = result.pop("stealth_active", False)
+                request.status = "Erfolgreich"
+                
+                # Resolve future für direct mode
+                if not request.future.done():
+                    request.future.set_result((result, proxy_used, stealth_active))
+                    
+            except asyncio.CancelledError as ce:
+                status_code = 499
+                error_msg = "Task wurde extern abgebrochen (z.B. durch Watchdog-Timeout nach 120s)."
+                request.status = "Fehlgeschlagen"
+                logger.warning(f"Watchdog: Scrape-Task für {request.url} abgebrochen.")
+                
+                if not request.future.done():
+                    request.future.set_exception(ce)
+                raise ce
+                
+            except Exception as e:
+                status_code = 500
+                error_msg = str(e)
+                request.status = "Fehlgeschlagen"
+                logger.error(f"Fehler beim Scraping von {request.url}: {e}")
+                
+                # Extract actual proxy and stealth active from exception properties
+                proxy_used = getattr(e, "proxy_used", proxy_used)
+                stealth_active = getattr(e, "stealth_active", stealth_active)
+                
+                if not request.future.done():
+                    request.future.set_exception(e)
+        finally:
+            # Durations berechnen (wird IMMER ausgeführt, auch bei CancelledError)
+            wait_duration_ms = int((start_time_dt - request.created_at).total_seconds() * 1000)
+            processing_duration_ms = int((time.time() - start_time) * 1000)
+            duration = wait_duration_ms + processing_duration_ms
+            
+            request.completed_at = datetime.utcnow()
+            
+            # Aus active_requests entfernen
+            self.active_requests.pop(request.id, None)
 
-        # Webhook POST ausführen (nur für Nicht-Playground-Requests)
-        if not request.is_playground and request.request_params.delivery_mode in ["webhook", "both"] and request.request_params.webhook_url:
-            webhook_payload = {
-                "job_id": request.id,
-                "url": request.url,
-                "status": request.status,
-                "completed_at": request.completed_at.isoformat() if request.completed_at else None,
-                "error": error_msg,
-                "data": result if request.status == "Erfolgreich" else None
-            }
-            # Im Hintergrund senden, um den Worker nicht zu blockieren
-            asyncio.create_task(self._send_webhook(request.request_params.webhook_url, webhook_payload))
+            # In DB speichern und Webhook feuern falls nicht Playground
+            try:
+                with SessionLocal() as db:
+                    # Job-Ergebnis nur für Nicht-Playground-Requests speichern
+                    if not request.is_playground:
+                        db_job = db.query(WebScraperJob).filter(WebScraperJob.id == request.id).first()
+                        if db_job:
+                            db_job.status = request.status
+                            db_job.completed_at = request.completed_at
+                            if request.status == "Erfolgreich":
+                                db_job.result = json.dumps(result) if result is not None else None
+                            else:
+                                db_job.error_message = error_msg
+                            db.commit()
+                        
+                    # Request Log IMMER schreiben (auch für Playground)
+                    log_entry = WebScraperRequestLog(
+                        url=request.url,
+                        status_code=status_code,
+                        response_time_ms=duration,
+                        wait_time_ms=wait_duration_ms,
+                        processing_time_ms=processing_duration_ms,
+                        proxy_used=proxy_used,
+                        stealth_mode_active=stealth_active,
+                        error_message=error_msg
+                    )
+                    db.add(log_entry)
+                    db.commit()
+            except Exception as db_err:
+                logger.error(f"Fehler beim Schreiben des Job-Ergebnisses in DB: {db_err}")
+
+            # Webhook POST ausführen (nur für Nicht-Playground-Requests)
+            if not request.is_playground and request.request_params.delivery_mode in ["webhook", "both"] and request.request_params.webhook_url:
+                webhook_payload = {
+                    "job_id": request.id,
+                    "url": request.url,
+                    "status": request.status,
+                    "completed_at": request.completed_at.isoformat() if request.completed_at else None,
+                    "error": error_msg,
+                    "data": result if request.status == "Erfolgreich" else None
+                }
+                # Im Hintergrund senden, um den Worker nicht zu blockieren
+                asyncio.create_task(self._send_webhook(request.request_params.webhook_url, webhook_payload))
 
     async def _send_webhook(self, url: str, payload: dict):
         headers = {"Content-Type": "application/json"}
