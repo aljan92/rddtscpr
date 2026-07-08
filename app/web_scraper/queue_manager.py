@@ -527,9 +527,10 @@ class WebScrapeQueueManager:
         
         try:
             with SessionLocal() as db:
-                logs = db.query(WebScraperRequestLog).order_by(WebScraperRequestLog.timestamp.desc()).limit(50).all()
+                logs = db.query(WebScraperRequestLog).order_by(WebScraperRequestLog.timestamp.desc()).limit(100).all()
                 for log in logs:
                     logs_json.append({
+                        "id": log.id,
                         "timestamp": log.timestamp.strftime('%d.%m.%Y %H:%M:%S') if log.timestamp else '-',
                         "endpoint": "/v1/web/scrape",
                         "target": log.url,

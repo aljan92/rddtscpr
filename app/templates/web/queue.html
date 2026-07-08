@@ -324,7 +324,7 @@
             <div class="p-6 border-b border-scraper-border flex items-center justify-between">
                 <div class="flex items-center space-x-2">
                     <i data-lucide="list-ordered" class="text-scraper-emerald w-5 h-5"></i>
-                    <h2 class="text-lg font-semibold text-white">Letzte API-Anfragen (Max. 50)</h2>
+                    <h2 class="text-lg font-semibold text-white">Letzte API-Anfragen (Max. 100)</h2>
                 </div>
                 <a href="/admin/web-scraper/logs/clear" onclick="return confirm('Möchtest du wirklich alle Logs löschen?')" class="flex items-center space-x-1.5 text-xs text-rose-400 hover:text-rose-300 font-medium px-3 py-1.5 rounded-lg border border-rose-500/20 hover:bg-rose-500/10 transition-all duration-200">
                     <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
@@ -342,11 +342,12 @@
                             <th class="p-4">Modus</th>
                             <th class="p-4">Dauer</th>
                             <th class="p-4">Status</th>
+                            <th class="p-4 text-right">Antwort</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-scraper-border/30 text-sm" id="logs-tbody">
                         <tr id="logs-empty-row">
-                            <td colspan="6" class="p-8 text-center text-slate-500">
+                            <td colspan="7" class="p-8 text-center text-slate-500">
                                 <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
                                 Keine Logs vorhanden.
                             </td>
@@ -471,7 +472,7 @@
                 if (!data.logs || data.logs.length === 0) {
                     logsTbody.innerHTML = `
                         <tr id="logs-empty-row">
-                            <td colspan="6" class="p-8 text-center text-slate-500">
+                            <td colspan="7" class="p-8 text-center text-slate-500">
                                 <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
                                 Keine Logs vorhanden.
                             </td>
@@ -515,6 +516,12 @@
                                     </div>
                                 </td>
                                 <td class="p-4">${statusBadge}</td>
+                                <td class="p-4 text-right whitespace-nowrap">
+                                    <button onclick="showLogJson(${log.id})" class="inline-flex items-center space-x-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-all duration-200">
+                                        <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                                        <span>JSON</span>
+                                    </button>
+                                </td>
                             </tr>
                         `;
                     });
@@ -527,8 +534,98 @@
             }
         }
 
+        // JSON modal functions
+        let currentModalJson = "";
+
+        async function showLogJson(logId) {
+            const modal = document.getElementById("json-modal");
+            const content = document.getElementById("json-content");
+            const subtitle = document.getElementById("modal-subtitle");
+            
+            content.innerText = "Lade Daten...";
+            subtitle.innerText = "Fetch ID: " + logId;
+            modal.classList.remove("hidden");
+            modal.classList.add("flex");
+            
+            try {
+                const res = await fetch(`/admin/web-scraper/logs/${logId}/json`);
+                const data = await res.json();
+                currentModalJson = JSON.stringify(data, null, 2);
+                content.innerText = currentModalJson;
+                
+                // Get URL from table row
+                const btn = document.querySelector(`button[onclick="showLogJson(${logId})"]`);
+                if (btn) {
+                    const row = btn.closest("tr");
+                    if (row && row.cells[2]) {
+                        const urlVal = row.cells[2].getAttribute("title") || row.cells[2].innerText;
+                        subtitle.innerText = urlVal.trim();
+                    }
+                }
+            } catch (err) {
+                content.innerText = "Fehler beim Laden der Antwortdaten: " + err;
+            }
+        }
+
+        function closeJsonModal() {
+            const modal = document.getElementById("json-modal");
+            modal.classList.remove("flex");
+            modal.classList.add("hidden");
+        }
+
+        function copyModalJson() {
+            if (!currentModalJson) return;
+            const btn = document.getElementById("copy-modal-btn");
+            navigator.clipboard.writeText(currentModalJson).then(() => {
+                const icon = btn.querySelector('i');
+                const span = btn.querySelector('span');
+                icon.setAttribute('data-lucide', 'check');
+                span.innerText = "Kopiert!";
+                icon.classList.remove('text-slate-300');
+                icon.classList.add('text-emerald-400');
+                lucide.createIcons();
+                setTimeout(() => {
+                    icon.setAttribute('data-lucide', 'copy');
+                    span.innerText = "Kopieren";
+                    icon.classList.remove('text-emerald-400');
+                    icon.classList.add('text-slate-300');
+                    lucide.createIcons();
+                }, 2000);
+            });
+        }
+
         updateQueue();
         setInterval(updateQueue, 1000); // Polling every 1 second
     </script>
+
+    <!-- JSON Viewer Modal -->
+    <div id="json-modal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm items-center justify-center p-4">
+        <div class="glass-card rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden border border-scraper-border shadow-2xl bg-slate-900">
+            <div class="px-6 py-4 border-b border-scraper-border flex items-center justify-between bg-scraper-card/30">
+                <div>
+                    <h3 class="text-base font-bold text-white flex items-center space-x-2">
+                        <i data-lucide="code" class="w-5 h-5 text-indigo-400"></i>
+                        <span>API-Antwort JSON</span>
+                    </h3>
+                    <p id="modal-subtitle" class="text-xs text-slate-400 mt-0.5 truncate max-w-lg font-mono"></p>
+                </div>
+                <button onclick="closeJsonModal()" class="text-slate-400 hover:text-white transition-colors">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto font-mono text-xs bg-slate-950/50 text-emerald-400 relative flex-1 min-h-0">
+                <button onclick="copyModalJson()" class="absolute top-4 right-4 flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-scraper-border text-slate-300 transition-all duration-200" id="copy-modal-btn">
+                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                    <span>Kopieren</span>
+                </button>
+                <pre class="whitespace-pre-wrap break-all mt-4" id="json-content">Lade Daten...</pre>
+            </div>
+            <div class="px-6 py-4 border-t border-scraper-border flex justify-end space-x-3 bg-scraper-card/30">
+                <button onclick="closeJsonModal()" class="text-xs font-semibold px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white transition-all duration-200">
+                    Schließen
+                </button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
