@@ -763,6 +763,7 @@ def _build_playwright_attempts(
     request: ScrapeRequest,
     dc_proxy: Optional[str],
     res_proxy: Optional[str],
+    skip_datacenter: bool = False,
 ) -> list[dict]:
     """
     Builds the ordered list of Playwright proxy attempts.
@@ -790,7 +791,7 @@ def _build_playwright_attempts(
         from app.web_scraper.queue_manager import web_scrape_queue
         proxy_mode = getattr(web_scrape_queue, "proxy_mode", "auto")
 
-        if proxy_mode != "stealth":
+        if proxy_mode != "stealth" and not skip_datacenter:
             attempts.append({
                 "name": "Evomi Datacenter",
                 "proxy_url": dc_proxy,
@@ -847,7 +848,7 @@ def _try_curl_cffi_chain(
             )
             blocked = is_bot_blocked(status_code, title, html)
             if blocked:
-                logger.info(f"curl_cffi blocked (status {status_code}) with country={country_label}. Trying next...")
+                logger.info(f"curl_cffi blocked (status {status_code}) with country={country_label}.")
                 last_block = {
                     "html_content": html,
                     "url": final_url,
@@ -858,6 +859,17 @@ def _try_curl_cffi_chain(
                     "stealth_active": False,
                     "scrape_engine": "curl_cffi"
                 }
+                
+                # If a Cloudflare challenge or bot shield is detected, curl_cffi won't be able
+                # to bypass it anyway. Abort early to avoid flagging the TLS fingerprint and wasting time.
+                title_lower = title.lower()
+                html_lower = html.lower()
+                is_cf = any(k in title_lower for k in ["cloudflare", "ddos-guard", "just a moment"]) or \
+                        any(k in html_lower for k in ["verify you are human", "cf-turnstile", "hcaptcha", "recaptcha"])
+                if is_cf:
+                    logger.info("Cloudflare/Bot shield detected. Aborting curl_cffi chain for Playwright fallback.")
+                    return None, last_block
+                
                 continue
             if not is_meaningful_html(html):
                 logger.info(f"curl_cffi returned SPA skeleton with country={country_label}. Needs browser rendering.")
@@ -937,7 +949,18 @@ async def scrape_single_page(
     #  BROWSER PATH: Playwright (with retry chain)
     # ===================================================================
     logger.info("Routing: Browser Path (Playwright)")
-    attempts = _build_playwright_attempts(request, dc_proxy, res_proxy)
+    
+    # Check if Cloudflare was detected in the fast path to skip datacenter proxy
+    skip_dc = False
+    if last_block_page_data:
+        title_lower = last_block_page_data.get("page_title", "").lower()
+        html_lower = last_block_page_data.get("html_content", "").lower()
+        if any(k in title_lower for k in ["cloudflare", "ddos-guard", "just a moment"]) or \
+           any(k in html_lower for k in ["verify you are human", "cf-turnstile", "hcaptcha", "recaptcha"]):
+            skip_dc = True
+            logger.info("Skipping datacenter proxy for Playwright fallback because Cloudflare was detected.")
+
+    attempts = _build_playwright_attempts(request, dc_proxy, res_proxy, skip_datacenter=skip_dc)
 
     pw_success = False
     pw_html = ""
