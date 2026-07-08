@@ -32,6 +32,7 @@ class ScrapeRequest(BaseModel):
     chunk_overlap: Optional[int] = Field(None, description="Der Überlappungsbereich (in Zeichen) zwischen aufeinanderfolgenden Chunks.", example=200)
     custom_headers: Optional[Dict[str, str]] = Field(None, description="Benutzerdefinierte HTTP-Header, die beim Request mitgesendet werden.")
     custom_cookies: Optional[List[Dict[str, Any]]] = Field(None, description="Session-Cookies zur Authentifizierung auf geschützten Seiten. Format: [{'name': 'x', 'value': 'y', 'domain': 'z'}].")
+    proxy_country: Optional[str] = Field(None, description="Ziel-Land für den Proxy (z.B. 'US', 'DE', 'GB'). Falls nicht übergeben, wird ein automatischer Geoblocking-Bypass versucht.", example="US")
 
     class Config:
         json_schema_extra = {

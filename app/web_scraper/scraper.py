@@ -37,6 +37,49 @@ def get_proxy_urls(rotating_proxy_url: str) -> tuple[Optional[str], Optional[str
         
     return dc_url, res_url
 
+def inject_proxy_country(proxy_url: str, country_code: str) -> str:
+    """
+    Injektiert das Country-Targeting in die Proxy-URL für Evomi.
+    Format: http://username_country-US:password@host:port
+    """
+    if not proxy_url or not country_code:
+        return proxy_url
+        
+    parsed = urlparse(proxy_url)
+    if not parsed.username or not parsed.password:
+        return proxy_url
+        
+    # Wir fügen _country-XX an den Username an (Standard für Evomi)
+    # Falls bereits ein Country-Code im Usernamen steht, ersetzen wir ihn
+    username = parsed.username
+    if "_country-" in username:
+        username = re.sub(r"_country-[A-Z]{2}", f"_country-{country_code.upper()}", username)
+    else:
+        username = f"{username}_country-{country_code.upper()}"
+        
+    netloc = f"{username}:{parsed.password}@{parsed.hostname}:{parsed.port}"
+    return parsed._replace(netloc=netloc).geturl()
+
+def inject_proxy_session(proxy_url: str, session_id: str) -> str:
+    """
+    Fügt eine Session-ID hinzu, um die IP bei jedem Request zu rotieren.
+    """
+    if not proxy_url or not session_id:
+        return proxy_url
+        
+    parsed = urlparse(proxy_url)
+    if not parsed.username or not parsed.password:
+        return proxy_url
+        
+    username = parsed.username
+    if "_session-" in username:
+        username = re.sub(r"_session-\w+", f"_session-{session_id}", username)
+    else:
+        username = f"{username}_session-{session_id}"
+        
+    netloc = f"{username}:{parsed.password}@{parsed.hostname}:{parsed.port}"
+    return parsed._replace(netloc=netloc).geturl()
+
 def parse_playwright_proxy(proxy_url: str) -> Optional[dict]:
     if not proxy_url:
         return None
@@ -62,9 +105,17 @@ async def launch_stealth_browser(
     custom_headers: Optional[dict] = None,
     custom_cookies: Optional[list] = None,
     block_media: bool = True,
-    include_screenshot: bool = False
+    include_screenshot: bool = False,
+    proxy_country: Optional[str] = None,
+    proxy_session: Optional[str] = None
 ) -> tuple[Browser, BrowserContext, Page]:
     
+    if proxy_url:
+        if proxy_country:
+            proxy_url = inject_proxy_country(proxy_url, proxy_country)
+        if proxy_session:
+            proxy_url = inject_proxy_session(proxy_url, proxy_session)
+            
     playwright_proxy = parse_playwright_proxy(proxy_url)
     
     browser_args = [
@@ -384,108 +435,117 @@ async def scrape_single_page(
     stealth_active = False
     status_detail = None
 
-    try:
-        async with async_playwright() as p:
-            # Check global proxy_mode setting dynamically
-            from app.web_scraper.queue_manager import web_scrape_queue
-            proxy_mode = getattr(web_scrape_queue, "proxy_mode", "auto")
+    import uuid
+    def make_sess():
+        return uuid.uuid4().hex[:8]
+
+    # Build proxy attempts chain
+    attempts = []
+    if request.proxy_country:
+        attempts.append({
+            "name": f"Evomi Residential ({request.proxy_country.upper()})",
+            "proxy_url": res_proxy,
+            "country": request.proxy_country,
+            "session": make_sess(),
+            "use_stealth": True
+        })
+        attempts.append({
+            "name": f"Evomi Residential ({request.proxy_country.upper()} - Retry)",
+            "proxy_url": res_proxy,
+            "country": request.proxy_country,
+            "session": make_sess(),
+            "use_stealth": True
+        })
+    else:
+        # Auto failover chain
+        from app.web_scraper.queue_manager import web_scrape_queue
+        proxy_mode = getattr(web_scrape_queue, "proxy_mode", "auto")
+        
+        if proxy_mode != "stealth":
+            attempts.append({
+                "name": "Evomi Datacenter",
+                "proxy_url": dc_proxy,
+                "country": None,
+                "session": None,
+                "use_stealth": False
+            })
             
-            if proxy_mode == "stealth":
-                proxy_used = "Evomi Residential"
-                stealth_active = True
-                
-            browser = None
-            context = None
-            page = None
-            success = False
+        attempts.append({
+            "name": "Evomi Residential (Default)",
+            "proxy_url": res_proxy,
+            "country": None,
+            "session": make_sess(),
+            "use_stealth": True
+        })
+        attempts.append({
+            "name": "Evomi Residential (US)",
+            "proxy_url": res_proxy,
+            "country": "US",
+            "session": make_sess(),
+            "use_stealth": True
+        })
+        attempts.append({
+            "name": "Evomi Residential (DE)",
+            "proxy_url": res_proxy,
+            "country": "DE",
+            "session": make_sess(),
+            "use_stealth": True
+        })
+        attempts.append({
+            "name": "Evomi Residential (GB)",
+            "proxy_url": res_proxy,
+            "country": "GB",
+            "session": make_sess(),
+            "use_stealth": True
+        })
+
+    success = False
+    html_content = ""
+    page_title = ""
+    status_code = 200
+    screenshot_url = None
+    last_exception = None
+
+    for idx, attempt in enumerate(attempts):
+        logger.info(f"Scraping attempt {idx+1}/{len(attempts)} using {attempt['name']}...")
+        proxy_used = attempt["name"]
+        stealth_active = attempt["use_stealth"]
+        
+        # Check soft timeout (70s) to avoid exceeding 90s queue limit
+        elapsed_time = time.time() - start_time
+        if elapsed_time > 70.0 and idx > 0:
+            logger.warning(f"Soft timeout reached after {elapsed_time:.2f}s. Stopping retry loop.")
+            break
             
-            if proxy_mode != "stealth":
-                logger.info(f"Attempt 1: DC-Proxy für {url}...")
-                try:
-                    browser, context, page = await launch_stealth_browser(
-                        p, 
-                        proxy_url=dc_proxy, 
-                        use_stealth=False,
-                        custom_headers=request.custom_headers,
-                        custom_cookies=request.custom_cookies,
-                        block_media=request.block_media,
-                        include_screenshot=filters.include_screenshot
-                    )
-                    
-                    # Navigation
-                    wait_until_option = request.wait_until
-                    if wait_until_option == "auto":
-                        response = await page.goto(url, wait_until="domcontentloaded", timeout=20000)
-                        try:
-                            # Intelligentes Kurz-Warten auf Netzwerkruhe (max. 3 Sekunden)
-                            await page.wait_for_load_state("networkidle", timeout=3000)
-                        except Exception:
-                            pass
-                    else:
-                        playwright_wait = "networkidle" if wait_until_option == "networkidle" else ("load" if wait_until_option == "load" else "domcontentloaded")
-                        response = await page.goto(url, wait_until=playwright_wait, timeout=30000)
-                    status_code = response.status if response else 200
-                    
-                    # Warten auf Selector falls spezifiziert
-                    if request.wait_for_selector:
-                        try:
-                            await page.wait_for_selector(request.wait_for_selector, timeout=10000)
-                        except Exception as e:
-                            logger.warning(f"Warten auf Selector '{request.wait_for_selector}' lief in ein Timeout: {e}")
-                    
-                    # Schatten-DOM aufdecken
-                    await pierce_shadow_dom_js(page)
-                    
-                    # DOM extrahieren
-                    page_title = await page.title()
-                    html_content = await page.content()
-                    
-                    # Prüfen, ob wir geblockt wurden
-                    if is_bot_blocked(status_code, page_title, html_content):
-                        logger.warning(f"Bot-Block auf Datacenter-Proxy erkannt für {url}. Starte Retry...")
-                        raise Exception("Bot block detected on Datacenter proxy.")
-                        
-                    # Erfolgreich gescraped über Datacenter!
-                    logger.info(f"DC-Scraping erfolgreich für {url} (Status: {status_code})")
-                    success = True
-                    
-                except Exception as attempt_err:
-                    logger.info(f"Datacenter-Proxy fehlgeschlagen für {url}: {attempt_err}")
-                    # Schließe den DC Browser falls offen
-                    if page: await page.close()
-                    if context: await context.close()
-                    if browser: await browser.close()
-                    browser = None
-                    context = None
-                    page = None
-                    
-            if not success:
-                # --- ATTEMPT 2: Fallback auf Residential + Stealth ---
-                logger.info(f"Attempt 2: Residential Proxy + Stealth für {url}...")
-                proxy_used = "Evomi Residential"
-                stealth_active = True
-                
+        browser = None
+        context = None
+        page = None
+        
+        try:
+            async with async_playwright() as p:
                 browser, context, page = await launch_stealth_browser(
                     p, 
-                    proxy_url=res_proxy, 
-                    use_stealth=True,
+                    proxy_url=attempt["proxy_url"], 
+                    use_stealth=attempt["use_stealth"],
                     custom_headers=request.custom_headers,
                     custom_cookies=request.custom_cookies,
                     block_media=request.block_media,
-                    include_screenshot=filters.include_screenshot
+                    include_screenshot=filters.include_screenshot,
+                    proxy_country=attempt["country"],
+                    proxy_session=attempt["session"]
                 )
                 
+                # Navigation
                 wait_until_option = request.wait_until
                 if wait_until_option == "auto":
                     response = await page.goto(url, wait_until="domcontentloaded", timeout=20000)
                     try:
-                        # Intelligentes Kurz-Warten auf Netzwerkruhe (max. 3 Sekunden)
                         await page.wait_for_load_state("networkidle", timeout=3000)
                     except Exception:
                         pass
                 else:
                     playwright_wait = "networkidle" if wait_until_option == "networkidle" else ("load" if wait_until_option == "load" else "domcontentloaded")
-                    response = await page.goto(url, wait_until=playwright_wait, timeout=35000)
+                    response = await page.goto(url, wait_until=playwright_wait, timeout=30000)
                 status_code = response.status if response else 200
                 
                 if request.wait_for_selector:
@@ -499,60 +559,88 @@ async def scrape_single_page(
                 page_title = await page.title()
                 html_content = await page.content()
                 
-                if is_bot_blocked(status_code, page_title, html_content):
-                    status_detail = f"Access denied (status {status_code}). Gated by bot detection or rate limit."
-                    logger.warning(f"Access denied on residential proxy (status {status_code}) for {url}")
-                else:
-                    logger.info(f"Residential-Scraping erfolgreich für {url}")
+                # Check if blocked
+                is_blocked = is_bot_blocked(status_code, page_title, html_content)
                 
-            # Ab hier haben wir die geladene Seite in 'page' und 'html_content'
-            
-            # Cookie Banner schließen
-            await dismiss_cookie_banners(page)
-            
-            # Auto-Scroll ausführen falls gewünscht (nur, wenn Medien nicht geblockt wurden, sonst macht scrollen wenig Sinn, oder falls der User es explizit will)
-            # Wir scrollen standardmäßig maximal 5-mal
-            await auto_scroll_page(page, max_scrolls=5)
-            
-            # Aktualisierten HTML-Inhalt nach Scroll holen
-            html_content = await page.content()
-            page_title = await page.title()
-            
-            # Login-Wall erkennen
-            final_url = page.url
-            login_wall_platform = check_login_wall(final_url, html_content)
-            if login_wall_platform:
-                if status_detail:
-                    status_detail += f" | {login_wall_platform}"
+                if is_blocked and idx < len(attempts) - 1:
+                    # Trigger retry via exception
+                    raise Exception(f"Bot block or rate limit (status {status_code}) on {attempt['name']}. Retrying next fallback...")
+                
+                # We either succeeded, or we are on the final attempt (where we have to return the block page)
+                if is_blocked:
+                    status_detail = f"Access denied (status {status_code}). Gated by bot detection or rate limit."
+                    logger.warning(f"Access denied on final attempt (status {status_code}) for {url}")
                 else:
-                    status_detail = login_wall_platform
-            
-            # Screenshot generieren falls gewünscht
-            screenshot_url = None
-            if filters.include_screenshot and job_id:
-                screenshot_dir = "./app/data/screenshots"
-                os.makedirs(screenshot_dir, exist_ok=True)
-                screenshot_path = f"{screenshot_dir}/{job_id}.png"
-                try:
-                    # Versuche Vollseiten-Screenshot
-                    await page.screenshot(path=screenshot_path, full_page=True, timeout=15000)
-                    screenshot_url = f"/v1/web/screenshots/{job_id}.png"
-                except Exception as e:
-                    logger.warning(f"Vollseiten-Screenshot fehlgeschlagen: {e}. Nutze Viewport-Screenshot.")
-                    try:
-                        await page.screenshot(path=screenshot_path, full_page=False)
-                        screenshot_url = f"/v1/web/screenshots/{job_id}.png"
-                    except Exception as err_sc:
-                        logger.error(f"Screenshot-Generierung gänzlich fehlgeschlagen: {err_sc}")
+                    status_detail = None
+                    success = True
+                    logger.info(f"Scraping successful using {attempt['name']} (status {status_code})")
+                    
+                # Post-navigation processing
+                await dismiss_cookie_banners(page)
+                await auto_scroll_page(page, max_scrolls=5)
+                
+                # Grab final content after scroll
+                html_content = await page.content()
+                page_title = await page.title()
+                
+                # Check for login wall
+                final_url = page.url
+                login_wall_platform = check_login_wall(final_url, html_content)
+                if login_wall_platform:
+                    if status_detail:
+                        status_detail += f" | {login_wall_platform}"
+                    else:
+                        status_detail = login_wall_platform
                         
-            # Browser schließen
-            await page.close()
-            await context.close()
-            await browser.close()
-    except Exception as e:
-        setattr(e, "proxy_used", proxy_used)
-        setattr(e, "stealth_active", stealth_active)
-        raise e
+                # Take screenshot
+                if filters.include_screenshot and job_id:
+                    screenshot_dir = "./app/data/screenshots"
+                    os.makedirs(screenshot_dir, exist_ok=True)
+                    screenshot_path = f"{screenshot_dir}/{job_id}.png"
+                    try:
+                        await page.screenshot(path=screenshot_path, full_page=True, timeout=15000)
+                        screenshot_url = f"/v1/web/screenshots/{job_id}.png"
+                    except Exception as e:
+                        logger.warning(f"Vollseiten-Screenshot fehlgeschlagen: {e}. Nutze Viewport-Screenshot.")
+                        try:
+                            await page.screenshot(path=screenshot_path, full_page=False)
+                            screenshot_url = f"/v1/web/screenshots/{job_id}.png"
+                        except Exception as err_sc:
+                            logger.error(f"Screenshot-Generierung gänzlich fehlgeschlagen: {err_sc}")
+                            
+                # Close page/browser
+                await page.close()
+                await context.close()
+                await browser.close()
+                browser = None
+                context = None
+                page = None
+                
+                break
+                
+        except Exception as attempt_err:
+            logger.warning(f"Scrape attempt {idx+1} ({attempt['name']}) failed: {attempt_err}")
+            last_exception = attempt_err
+            if page:
+                try: await page.close()
+                except Exception: pass
+            if context:
+                try: await context.close()
+                except Exception: pass
+            if browser:
+                try: await browser.close()
+                except Exception: pass
+            browser = None
+            context = None
+            page = None
+            
+    if not success and not status_detail:
+        if last_exception:
+            setattr(last_exception, "proxy_used", proxy_used)
+            setattr(last_exception, "stealth_active", stealth_active)
+            raise last_exception
+        else:
+            raise Exception("All scraping attempts failed due to network or browser errors.")
         
     # --- Post-Processing mit BeautifulSoup ---
     soup = BeautifulSoup(html_content, "html.parser")
