@@ -36,37 +36,56 @@ class WebScrapeQueueManager:
         self.worker_tasks = []
         self.cleanup_task = None
         self.load_monitor_task = None
+        self.scaling_monitor_task = None
         self._running = False
-        self.max_workers = 5  # Maximale parallele Worker
+        self.min_workers = 5  # Basis-Workers (dauerhaft aktiv)
+        self.max_capacity = 100  # Maximale dynamische Kapazität
+        self.worker_id_counter = 0
+        self.last_scale_up_time = 0.0
         self.active_requests = {}  # id -> WebScrapeRequest
         self.load_history = []  # [(timestamp, load_pct)] for stats
         self.sparkline_history = []  # last 60 load values
         self.wait_times = []  # delay in seconds for last 100 requests
 
+    @property
+    def max_workers(self) -> int:
+        return self.min_workers
+
+    @max_workers.setter
+    def max_workers(self, value: int):
+        self.min_workers = value
+
     def start(self):
         if not self._running:
             self._running = True
             
-            # Max workers aus Datenbank laden
+            # Max workers (min_workers) aus Datenbank laden
             try:
                 with SessionLocal() as db:
                     setting = db.query(SystemSetting).filter(SystemSetting.key == "web_scraper_max_workers").first()
                     if setting:
-                        self.max_workers = int(setting.value)
-                        logger.info(f"Web Scraper Max Workers aus DB geladen: {self.max_workers}")
+                        self.min_workers = int(setting.value)
+                        logger.info(f"Web Scraper Basis-Workers aus DB geladen: {self.min_workers}")
                     else:
-                        setting = SystemSetting(key="web_scraper_max_workers", value=str(self.max_workers))
+                        setting = SystemSetting(key="web_scraper_max_workers", value=str(self.min_workers))
                         db.add(setting)
                         db.commit()
-                        logger.info(f"Standard-Max-Workers in DB angelegt: {self.max_workers}")
+                        logger.info(f"Standard-Basis-Workers in DB angelegt: {self.min_workers}")
             except Exception as e:
                 logger.error(f"Fehler beim Laden von web_scraper_max_workers aus DB: {e}")
 
-            # Worker Pool starten
-            self.worker_tasks = [asyncio.create_task(self._worker_loop(i)) for i in range(self.max_workers)]
+            # Baseline Worker Pool starten
+            self.worker_id_counter = 0
+            self.worker_tasks = []
+            for _ in range(self.min_workers):
+                w_id = self.worker_id_counter
+                self.worker_id_counter += 1
+                self.worker_tasks.append(asyncio.create_task(self._worker_loop(w_id)))
+                
             self.cleanup_task = asyncio.create_task(self._cleanup_loop())
             self.load_monitor_task = asyncio.create_task(self._load_monitor_loop())
-            logger.info("WebScrapeQueueManager erfolgreich gestartet (inkl. Worker Pool & Cleanup Task).")
+            self.scaling_monitor_task = asyncio.create_task(self._scaling_monitor_loop())
+            logger.info("WebScrapeQueueManager erfolgreich gestartet (inkl. Basis-Worker Pool, Cleanup, Load-Monitor & Scaling-Monitor).")
 
     async def stop(self):
         self._running = False
@@ -76,6 +95,8 @@ class WebScrapeQueueManager:
             self.cleanup_task.cancel()
         if self.load_monitor_task:
             self.load_monitor_task.cancel()
+        if self.scaling_monitor_task:
+            self.scaling_monitor_task.cancel()
         logger.info("WebScrapeQueueManager beendet.")
 
     async def enqueue(self, url: str, request_params: ScrapeRequest, is_playground: bool = False) -> tuple[dict, str, bool]:
@@ -127,7 +148,26 @@ class WebScrapeQueueManager:
         logger.info(f"Web Scraper Queue Worker {worker_id} gestartet.")
         while self._running:
             try:
-                prio, t_queued, request = await self.queue.get()
+                # Prüfen, ob wir über dem Min-Limit liegen
+                is_dynamic = len(self.worker_tasks) > self.min_workers
+                
+                if is_dynamic:
+                    try:
+                        # Dynamic workers wait with a 10s timeout
+                        item = await asyncio.wait_for(self.queue.get(), timeout=10.0)
+                    except asyncio.TimeoutError:
+                        # If we timed out and still exceed min_workers, exit task
+                        if len(self.worker_tasks) > self.min_workers:
+                            current_task = asyncio.current_task()
+                            if current_task in self.worker_tasks:
+                                self.worker_tasks.remove(current_task)
+                            logger.info(f"Dynamic Web Scraper Worker {worker_id} wegen Inaktivität (10s Timeout) beendet. Active Workers: {len(self.worker_tasks)}")
+                            break
+                        continue
+                else:
+                    item = await self.queue.get()
+                    
+                prio, t_queued, request = item
                 request.status = "Scraping"
                 
                 # In DB aktualisieren
@@ -304,34 +344,83 @@ class WebScrapeQueueManager:
 
     async def _load_monitor_loop(self):
         """
-        Berechnet minütlich die Systemlast der Web-Scraper-Queue.
+        Berechnet minütlich die Systemlast der Web-Scraper-Queue für die Verlaufshistorie.
         """
         while self._running:
             try:
-                active_count = len([r for r in self.active_requests.values() if r.status == "Scraping"])
-                load_pct = (active_count / self.max_workers * 100) if self.max_workers > 0 else 0
+                current_load, _ = self.calculate_system_load()
                 
-                self.load_history.append((datetime.utcnow(), load_pct))
+                self.load_history.append((datetime.utcnow(), current_load))
                 if len(self.load_history) > 1440:  # 24 Stunden Historie behalten
                     self.load_history.pop(0)
                     
-                self.sparkline_history.append(load_pct)
+                self.sparkline_history.append(current_load)
                 if len(self.sparkline_history) > 60:
                     self.sparkline_history.pop(0)
                     
-                await asyncio.sleep(60)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Fehler im Load-Monitor: {e}")
-                await asyncio.sleep(60)
+            await asyncio.sleep(60)
+
+    async def _scaling_monitor_loop(self):
+        """
+        Überwacht die Auslastung der Queue sekündlich und skaliert die Worker-Anzahl dynamisch.
+        """
+        logger.info("Web Scraper Scaling-Monitor gestartet.")
+        while self._running:
+            try:
+                await asyncio.sleep(1.0)
+                
+                active_count = len([r for r in self.active_requests.values() if r.status == "Scraping"])
+                q_len = len([r for r in self.active_requests.values() if r.status == "Wartend"])
+                
+                current_workers = len(self.worker_tasks)
+                
+                # Load relative to CURRENT worker count
+                load_pct = ((active_count + q_len) / current_workers * 100) if current_workers > 0 else 0
+                
+                if load_pct > 50.0 and current_workers < self.max_capacity:
+                    now = time.time()
+                    
+                    # 100% Load or queue backlog -> scale up immediately
+                    if load_pct >= 100.0 or q_len > 0:
+                        scale_by = max(5, q_len)
+                        scale_by = min(scale_by, self.max_capacity - current_workers)
+                        
+                        if scale_by > 0:
+                            logger.info(f"Hohe Last ({load_pct:.1f}%) und {q_len} wartende Requests. Skaliere sofort um {scale_by} Worker hoch. Active Workers: {current_workers + scale_by}")
+                            for _ in range(scale_by):
+                                w_id = self.worker_id_counter
+                                self.worker_id_counter += 1
+                                self.worker_tasks.append(asyncio.create_task(self._worker_loop(w_id)))
+                            self.last_scale_up_time = now
+                            
+                    # 50% - 99% Load -> scale up gradually (every 5 seconds)
+                    elif now - self.last_scale_up_time >= 5.0:
+                        scale_by = min(5, self.max_capacity - current_workers)
+                        if scale_by > 0:
+                            logger.info(f"Moderate Last ({load_pct:.1f}%). Skaliere stufenweise um {scale_by} Worker hoch. Active Workers: {current_workers + scale_by}")
+                            for _ in range(scale_by):
+                                w_id = self.worker_id_counter
+                                self.worker_id_counter += 1
+                                self.worker_tasks.append(asyncio.create_task(self._worker_loop(w_id)))
+                            self.last_scale_up_time = now
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Fehler im Scaling-Monitor-Loop: {e}")
 
     def calculate_system_load(self) -> tuple[float, float]:
         """
         Gibt die aktuelle Systemlast und die Spitzenlast der letzten 24 Stunden zurück.
         """
         active_count = len([r for r in self.active_requests.values() if r.status == "Scraping"])
-        current_load = (active_count / self.max_workers * 100) if self.max_workers > 0 else 0
+        q_len = len([r for r in self.active_requests.values() if r.status == "Wartend"])
+        current_workers = len(self.worker_tasks)
+        
+        current_load = ((active_count + q_len) / current_workers * 100) if current_workers > 0 else 0
         
         max_24h_load = current_load
         if self.load_history:
@@ -428,19 +517,23 @@ class WebScrapeQueueManager:
         }
 
     def resize_worker_pool(self, new_size: int):
-        if new_size == self.max_workers:
+        if new_size == self.min_workers:
             return
-        logger.info(f"Passe Web Scraper Worker Pool Größe von {self.max_workers} auf {new_size} an...")
+        logger.info(f"Passe Web Scraper Basis-Worker-Pool Größe von {self.min_workers} auf {new_size} an...")
         
-        # Worker-Tasks stoppen
-        for t in self.worker_tasks:
-            t.cancel()
-        self.worker_tasks.clear()
+        self.min_workers = new_size
         
-        # Neue Worker-Tasks starten
-        self.max_workers = new_size
         if self._running:
-            self.worker_tasks = [asyncio.create_task(self._worker_loop(i)) for i in range(self.max_workers)]
+            current_count = len(self.worker_tasks)
+            # Wenn der neue Baseline-Wert größer ist als die aktuelle Anzahl Worker, spawnen wir sofort neue
+            if new_size > current_count:
+                spawn_count = new_size - current_count
+                logger.info(f"Basis-Worker erhöht. Starte {spawn_count} zusätzliche Basis-Worker...")
+                for _ in range(spawn_count):
+                    w_id = self.worker_id_counter
+                    self.worker_id_counter += 1
+                    self.worker_tasks.append(asyncio.create_task(self._worker_loop(w_id)))
+            # Wenn der neue Baseline-Wert kleiner ist, beenden sich überschüssige dynamic Worker bei Inaktivität selbst.
 
 # Globaler Queue Manager für Web Scraper
 web_scrape_queue = WebScrapeQueueManager()

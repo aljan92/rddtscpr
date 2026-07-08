@@ -130,15 +130,15 @@
                         <span>Queue-Einstellungen</span>
                     </h2>
                     <p class="text-xs text-slate-400">
-                        Steuert die maximale Parallelität der Headless Browser-Instanzen (Workers), die gleichzeitig Scraping-Jobs abarbeiten.
+                        Steuert die Anzahl der dauerhaft aktiven Browser-Sessions. Bei hoher Last skaliert das System automatisch weitere temporäre Sessions (bis zu 100) hinzu und baut diese bei Inaktivität wieder ab.
                     </p>
                     
                     <form action="/admin/web-scraper/queue/settings" method="POST" class="space-y-4 pt-2">
                         <div>
                             <label for="max_workers" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
-                                Max. Parallele Sessions (Workers)
+                                Basis-Sessions (dauerhaft aktiv)
                             </label>
-                            <input type="number" min="1" max="20" name="max_workers" id="max_workers" value="{{ max_workers }}"
+                            <input type="number" min="1" max="100" name="max_workers" id="max_workers" value="{{ max_workers }}"
                                    class="w-full bg-scraper-dark/50 border border-scraper-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-scraper-emerald focus:ring-1 focus:ring-scraper-emerald transition-all duration-200 font-medium">
                         </div>
 

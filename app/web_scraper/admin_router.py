@@ -115,8 +115,8 @@ async def web_admin_queue_settings(
     username: str = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
-    if max_workers < 1 or max_workers > 20:
-        return RedirectResponse(url="/admin/web-scraper/queue?error=Max+Workers+muss+zwischen+1+und+20+liegen.", status_code=303)
+    if max_workers < 1 or max_workers > 100:
+        return RedirectResponse(url="/admin/web-scraper/queue?error=Basis-Workers+muss+zwischen+1+und+100+liegen.", status_code=303)
     try:
         web_scrape_queue.resize_worker_pool(max_workers)
         setting = db.query(SystemSetting).filter(SystemSetting.key == "web_scraper_max_workers").first()
