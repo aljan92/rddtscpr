@@ -64,6 +64,7 @@ class Metadata(BaseModel):
     description: Optional[str] = Field(None, description="Die Meta-Beschreibung der Seite für SEO.")
     status: int = Field(..., description="Der empfangene HTTP-Statuscode der Seite (z.B. 200).")
     execution_time_ms: int = Field(..., description="Die gemessene Verarbeitungszeit in Millisekunden.")
+    status_detail: Optional[str] = Field(None, description="Zusätzliche Details zum Status, z.B. Login-Wall-Meldungen.")
 
 class ExtractedData(BaseModel):
     links: List[str] = Field(default_factory=list, description="Liste aller gefundenen Links auf der Seite, konvertiert in absolute URLs.")

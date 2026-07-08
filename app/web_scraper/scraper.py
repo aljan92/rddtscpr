@@ -229,6 +229,36 @@ async def dismiss_cookie_banners(page: Page):
         except Exception as e:
             pass
 
+def check_login_wall(url: str, html_content: str) -> Optional[str]:
+    """
+    Prüft, ob die Seite hinter einer Login-Schranke liegt.
+    Gibt eine verständliche Fehlermeldung zurück, falls erkannt, sonst None.
+    """
+    url_lower = url.lower()
+    html_lower = html_content.lower()
+    
+    # 1. X.com / Twitter
+    if "x.com" in url_lower or "twitter.com" in url_lower:
+        if "onboarding" in html_lower or "/i/flow/login" in html_lower or "signup" in html_lower:
+            return "Login-Wall von X.com erkannt. Inhalte sind eingeschränkt. Bitte Session-Cookies übergeben."
+            
+    # 2. Instagram
+    elif "instagram.com" in url_lower:
+        if "/accounts/login" in html_lower or "login" in html_lower:
+            return "Login-Wall von Instagram erkannt. Bitte Session-Cookies übergeben."
+            
+    # 3. Facebook
+    elif "facebook.com" in url_lower:
+        if "/login" in html_lower or "facebook.com/login" in html_lower:
+            return "Login-Wall von Facebook erkannt. Bitte Session-Cookies übergeben."
+            
+    # 4. LinkedIn
+    elif "linkedin.com" in url_lower:
+        if "/login" in html_lower or "linkedin.com/signup" in html_lower:
+            return "Login-Wall von LinkedIn erkannt. Bitte Session-Cookies übergeben."
+            
+    return None
+
 async def pierce_shadow_dom_js(page: Page):
     """
     Führt JS auf der Seite aus, um Inhalte aus dem Shadow DOM in den normalen DOM zu kopieren,
@@ -352,6 +382,7 @@ async def scrape_single_page(
     
     proxy_used = "Evomi Datacenter"
     stealth_active = False
+    status_detail = None
 
     try:
         async with async_playwright() as p:
@@ -486,6 +517,10 @@ async def scrape_single_page(
             html_content = await page.content()
             page_title = await page.title()
             
+            # Login-Wall erkennen
+            final_url = page.url
+            status_detail = check_login_wall(final_url, html_content)
+            
             # Screenshot generieren falls gewünscht
             screenshot_url = None
             if filters.include_screenshot and job_id:
@@ -557,7 +592,8 @@ async def scrape_single_page(
         title=page_title,
         description=meta_description,
         status=status_code,
-        execution_time_ms=execution_time
+        execution_time_ms=execution_time,
+        status_detail=status_detail
     )
     
     response_data = {
