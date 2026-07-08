@@ -500,9 +500,10 @@ async def scrape_single_page(
                 html_content = await page.content()
                 
                 if is_bot_blocked(status_code, page_title, html_content):
-                    raise Exception(f"Access denied (status {status_code}). Blocked despite using a residential proxy.")
-                    
-                logger.info(f"Residential-Scraping erfolgreich für {url}")
+                    status_detail = f"Access denied (status {status_code}). Gated by bot detection or rate limit."
+                    logger.warning(f"Access denied on residential proxy (status {status_code}) for {url}")
+                else:
+                    logger.info(f"Residential-Scraping erfolgreich für {url}")
                 
             # Ab hier haben wir die geladene Seite in 'page' und 'html_content'
             
@@ -519,7 +520,12 @@ async def scrape_single_page(
             
             # Login-Wall erkennen
             final_url = page.url
-            status_detail = check_login_wall(final_url, html_content)
+            login_wall_platform = check_login_wall(final_url, html_content)
+            if login_wall_platform:
+                if status_detail:
+                    status_detail += f" | {login_wall_platform}"
+                else:
+                    status_detail = login_wall_platform
             
             # Screenshot generieren falls gewünscht
             screenshot_url = None
