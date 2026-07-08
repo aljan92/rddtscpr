@@ -4,6 +4,7 @@ from typing import Optional, Any
 
 import re
 import time
+import uuid
 import logging
 import asyncio
 from urllib.parse import urlparse, urljoin
@@ -11,6 +12,7 @@ from bs4 import BeautifulSoup
 import markdownify
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 from playwright_stealth import Stealth
+from curl_cffi import requests as cffi_requests
 
 from app.web_scraper.models import ScrapeRequest, ScrapeResponse, Metadata, ExtractedData, ResponseFilters
 
@@ -444,35 +446,316 @@ def chunk_markdown_content(text: str, chunk_size: int, chunk_overlap: int) -> li
         start += chunk_size - chunk_overlap
     return chunks
 
-async def scrape_single_page(
-    url: str, 
-    request: ScrapeRequest, 
-    rotating_proxy_url: Optional[str] = None,
-    job_id: Optional[str] = None
+# ---------------------------------------------------------------------------
+#  curl_cffi Fast-Path Engine
+# ---------------------------------------------------------------------------
+
+def _build_cffi_proxy_url(proxy_url: str, country: Optional[str] = None) -> Optional[str]:
+    """
+    Formats an Evomi proxy URL for curl_cffi (with optional country targeting
+    and a fresh session ID to rotate the IP).
+    """
+    if not proxy_url:
+        return None
+    url = proxy_url
+    if country:
+        url = inject_proxy_country(url, country)
+    url = inject_proxy_session(url, uuid.uuid4().hex[:8])
+    return url
+
+
+def scrape_with_curl_cffi(
+    url: str,
+    proxy_url: Optional[str] = None,
+    proxy_country: Optional[str] = None,
+    timeout: int = 15
+) -> tuple[int, str, str, str]:
+    """
+    Lightweight TLS-impersonated GET request using curl_cffi.
+    Returns (status_code, html_content, page_title, final_url).
+    """
+    formatted_proxy = _build_cffi_proxy_url(proxy_url, proxy_country)
+    proxies = None
+    if formatted_proxy:
+        proxies = {"http": formatted_proxy, "https": formatted_proxy}
+
+    # Match locale to country for Accept-Language header
+    locale_map = {
+        "US": "en-US,en;q=0.9",
+        "DE": "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7",
+        "GB": "en-GB,en;q=0.9",
+        "AU": "en-AU,en;q=0.9",
+        "BR": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "FR": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "ES": "es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7",
+        "IT": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
+        "JP": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
+        "CA": "en-CA,en;q=0.9",
+        "IN": "en-IN,en;q=0.9",
+        "CN": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        "RU": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+    }
+    accept_lang = locale_map.get((proxy_country or "").upper(), "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7")
+
+    headers = {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": accept_lang,
+        "Accept-Encoding": "gzip, deflate, br",
+        "Cache-Control": "max-age=0",
+        "Sec-Ch-Ua": '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+    }
+
+    response = cffi_requests.get(
+        url,
+        headers=headers,
+        proxies=proxies,
+        impersonate="chrome136",
+        timeout=timeout,
+        allow_redirects=True,
+    )
+
+    html_content = response.text
+    status_code = response.status_code
+    final_url = str(response.url)
+
+    # Extract title from raw HTML
+    title_match = re.search(r"<title[^>]*>(.*?)</title>", html_content, re.IGNORECASE | re.DOTALL)
+    page_title = title_match.group(1).strip() if title_match else ""
+
+    return status_code, html_content, page_title, final_url
+
+
+def is_meaningful_html(html: str) -> bool:
+    """
+    Checks whether the HTML contains meaningful visible text content.
+    Returns False for empty SPA skeletons (React/Vue/Angular apps that
+    require JavaScript to render) and known bot-block pages.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Remove script and style tags before measuring text
+    for tag in soup.find_all(["script", "style", "noscript"]):
+        tag.decompose()
+
+    visible_text = soup.get_text(separator=" ", strip=True)
+
+    # Typical SPA skeletons have very little visible text
+    if len(visible_text) < 100:
+        return False
+
+    # Check for well-known SPA root-only patterns
+    body = soup.find("body")
+    if body:
+        children = [c for c in body.children if getattr(c, "name", None)]
+        if len(children) <= 2:
+            # Only 1-2 div children (e.g. <div id="root"></div> or <div id="app"></div>)
+            inner_text = body.get_text(strip=True)
+            if len(inner_text) < 80:
+                return False
+
+    return True
+
+
+def build_result_from_html(
+    html_content: str,
+    url: str,
+    page_title: str,
+    status_code: int,
+    request: ScrapeRequest,
+    filters: ResponseFilters,
+    execution_time_ms: int,
+    status_detail: Optional[str] = None,
+    screenshot_url: Optional[str] = None,
+    proxy_used: str = "curl_cffi",
+    stealth_active: bool = False,
+    scrape_engine: str = "curl_cffi",
 ) -> dict:
     """
-    Führt den Scraping-Vorgang für eine einzelne URL aus.
-    Implementiert das Smart Stealth Routing (DC -> Residential Fallback).
+    Shared post-processing: converts raw HTML into the standard API response
+    (markdown, extracted data, chunks, etc.). Used by both curl_cffi and
+    Playwright code paths so the response format is always identical.
     """
-    start_time = time.time()
-    dc_proxy, res_proxy = get_proxy_urls(rotating_proxy_url)
-    
-    # Standardauswahl für response filters
-    filters = request.response_filters
-    if not filters:
-        filters = ResponseFilters()
-        
-    logger.info(f"Starte Scraping für URL: {url} (Job-ID: {job_id})")
-    
-    proxy_used = "Evomi Datacenter"
-    stealth_active = False
-    status_detail = None
+    soup = BeautifulSoup(html_content, "html.parser")
 
-    import uuid
+    # Meta description
+    meta_desc_tag = soup.find("meta", attrs={"name": "description"}) or soup.find("meta", attrs={"property": "og:description"})
+    meta_description = meta_desc_tag.get("content", "").strip() if meta_desc_tag else ""
+
+    # Extracted data (links, images, tables)
+    extracted_links = []
+    for link in soup.find_all("a", href=True):
+        absolute_href = urljoin(url, link["href"])
+        if absolute_href.startswith("http"):
+            extracted_links.append(absolute_href)
+    extracted_links = list(dict.fromkeys(extracted_links))
+
+    extracted_images = []
+    for img in soup.find_all("img", src=True):
+        absolute_src = urljoin(url, img["src"])
+        if absolute_src.startswith("http"):
+            extracted_images.append(absolute_src)
+    extracted_images = list(dict.fromkeys(extracted_images))
+
+    extracted_tables = extract_tables_from_soup(soup)
+
+    # Boilerplate removal + markdown conversion
+    cleaned_soup = clean_html_boilerplate(soup)
+    cleaned_html = str(cleaned_soup)
+    markdown_text = markdownify.markdownify(cleaned_html, heading_style="ATX").strip()
+    markdown_text = re.sub(r"\n{3,}", "\n\n", markdown_text)
+
+    # Login wall detection
+    login_wall_msg = check_login_wall(url, html_content)
+    if login_wall_msg:
+        status_detail = f"{status_detail} | {login_wall_msg}" if status_detail else login_wall_msg
+
+    meta = Metadata(
+        url=url,
+        title=page_title,
+        description=meta_description,
+        status=status_code,
+        execution_time_ms=execution_time_ms,
+        status_detail=status_detail,
+    )
+
+    response_data = {
+        "meta": meta.model_dump(),
+        "proxy_used": proxy_used,
+        "stealth_active": stealth_active,
+        "scrape_engine": scrape_engine,
+    }
+
+    if filters.include_markdown:
+        response_data["content_md"] = markdown_text
+        if request.chunk_size:
+            overlap = request.chunk_overlap or 0
+            response_data["chunks"] = chunk_markdown_content(markdown_text, request.chunk_size, overlap)
+
+    if filters.include_html:
+        response_data["html"] = html_content
+
+    if filters.include_extracted_data:
+        response_data["extracted_data"] = ExtractedData(
+            links=extracted_links,
+            tables=extracted_tables,
+            images=extracted_images,
+        ).model_dump()
+
+    if screenshot_url:
+        response_data["screenshot_url"] = screenshot_url
+
+    return response_data
+
+
+# ---------------------------------------------------------------------------
+#  Playwright Browser Engine (Slow-Path)
+# ---------------------------------------------------------------------------
+
+async def _run_playwright_attempt(
+    url: str,
+    request: ScrapeRequest,
+    filters: ResponseFilters,
+    attempt: dict,
+    job_id: Optional[str] = None,
+) -> tuple[bool, int, str, str, Optional[str], Optional[str]]:
+    """
+    Runs a single Playwright scraping attempt.
+    Returns (success, status_code, html_content, page_title, screenshot_url, status_detail).
+    Raises Exception if blocked (to signal retry to the caller).
+    """
+    screenshot_url = None
+    async with async_playwright() as p:
+        browser, context, page = await launch_stealth_browser(
+            p,
+            proxy_url=attempt["proxy_url"],
+            use_stealth=attempt["use_stealth"],
+            custom_headers=request.custom_headers,
+            custom_cookies=request.custom_cookies,
+            block_media=request.block_media,
+            include_screenshot=filters.include_screenshot,
+            proxy_country=attempt["country"],
+            proxy_session=attempt["session"],
+        )
+
+        try:
+            # Navigation
+            wait_until_option = request.wait_until
+            if wait_until_option == "auto":
+                response = await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=3000)
+                except Exception:
+                    pass
+            else:
+                pw_wait = "networkidle" if wait_until_option == "networkidle" else ("load" if wait_until_option == "load" else "domcontentloaded")
+                response = await page.goto(url, wait_until=pw_wait, timeout=30000)
+
+            status_code = response.status if response else 200
+
+            if request.wait_for_selector:
+                try:
+                    await page.wait_for_selector(request.wait_for_selector, timeout=10000)
+                except Exception as e:
+                    logger.warning(f"Wait for selector '{request.wait_for_selector}' timed out: {e}")
+
+            await pierce_shadow_dom_js(page)
+
+            page_title = await page.title()
+            html_content = await page.content()
+
+            # Bot-block check
+            blocked = is_bot_blocked(status_code, page_title, html_content)
+            if blocked:
+                raise Exception(f"Bot block (status {status_code}) on {attempt['name']}.")
+
+            # Post-navigation processing
+            await dismiss_cookie_banners(page)
+            await auto_scroll_page(page, max_scrolls=5)
+
+            html_content = await page.content()
+            page_title = await page.title()
+
+            # Screenshot
+            if filters.include_screenshot and job_id:
+                screenshot_dir = "./app/data/screenshots"
+                os.makedirs(screenshot_dir, exist_ok=True)
+                screenshot_path = f"{screenshot_dir}/{job_id}.png"
+                try:
+                    await page.screenshot(path=screenshot_path, full_page=True, timeout=15000)
+                    screenshot_url = f"/v1/web/screenshots/{job_id}.png"
+                except Exception as e:
+                    logger.warning(f"Full-page screenshot failed: {e}. Trying viewport screenshot.")
+                    try:
+                        await page.screenshot(path=screenshot_path, full_page=False)
+                        screenshot_url = f"/v1/web/screenshots/{job_id}.png"
+                    except Exception as err_sc:
+                        logger.error(f"Screenshot generation completely failed: {err_sc}")
+
+            return True, status_code, html_content, page_title, screenshot_url, None
+        finally:
+            await page.close()
+            await context.close()
+            await browser.close()
+
+
+def _build_playwright_attempts(
+    request: ScrapeRequest,
+    dc_proxy: Optional[str],
+    res_proxy: Optional[str],
+) -> list[dict]:
+    """
+    Builds the ordered list of Playwright proxy attempts.
+    """
     def make_sess():
         return uuid.uuid4().hex[:8]
 
-    # Build proxy attempts chain
     attempts = []
     if request.proxy_country:
         attempts.append({
@@ -480,275 +763,238 @@ async def scrape_single_page(
             "proxy_url": res_proxy,
             "country": request.proxy_country,
             "session": make_sess(),
-            "use_stealth": True
+            "use_stealth": True,
         })
         attempts.append({
             "name": f"Evomi Residential ({request.proxy_country.upper()} - Retry)",
             "proxy_url": res_proxy,
             "country": request.proxy_country,
             "session": make_sess(),
-            "use_stealth": True
+            "use_stealth": True,
         })
     else:
-        # Auto failover chain
         from app.web_scraper.queue_manager import web_scrape_queue
         proxy_mode = getattr(web_scrape_queue, "proxy_mode", "auto")
-        
+
         if proxy_mode != "stealth":
             attempts.append({
                 "name": "Evomi Datacenter",
                 "proxy_url": dc_proxy,
                 "country": None,
                 "session": None,
-                "use_stealth": False
+                "use_stealth": False,
             })
-            
-        attempts.append({
-            "name": "Evomi Residential (Default)",
-            "proxy_url": res_proxy,
-            "country": None,
-            "session": make_sess(),
-            "use_stealth": True
-        })
-        attempts.append({
-            "name": "Evomi Residential (US)",
-            "proxy_url": res_proxy,
-            "country": "US",
-            "session": make_sess(),
-            "use_stealth": True
-        })
-        attempts.append({
-            "name": "Evomi Residential (DE)",
-            "proxy_url": res_proxy,
-            "country": "DE",
-            "session": make_sess(),
-            "use_stealth": True
-        })
-        attempts.append({
-            "name": "Evomi Residential (GB)",
-            "proxy_url": res_proxy,
-            "country": "GB",
-            "session": make_sess(),
-            "use_stealth": True
-        })
 
-    success = False
-    html_content = ""
-    page_title = ""
-    status_code = 200
-    screenshot_url = None
-    last_exception = None
+        attempts.append({"name": "Evomi Residential (Default)", "proxy_url": res_proxy, "country": None, "session": make_sess(), "use_stealth": True})
+        attempts.append({"name": "Evomi Residential (US)", "proxy_url": res_proxy, "country": "US", "session": make_sess(), "use_stealth": True})
+        attempts.append({"name": "Evomi Residential (DE)", "proxy_url": res_proxy, "country": "DE", "session": make_sess(), "use_stealth": True})
+        attempts.append({"name": "Evomi Residential (GB)", "proxy_url": res_proxy, "country": "GB", "session": make_sess(), "use_stealth": True})
+
+    return attempts
+
+
+# ---------------------------------------------------------------------------
+#  curl_cffi Fast-Path Retry Chain
+# ---------------------------------------------------------------------------
+
+def _build_cffi_country_chain(request: ScrapeRequest) -> list[Optional[str]]:
+    """
+    Returns a list of countries to try with curl_cffi.
+    If the user specified a country, we try that one (with one retry).
+    Otherwise we try: no-country -> US -> DE -> GB.
+    """
+    if request.proxy_country:
+        return [request.proxy_country, request.proxy_country]
+    return [None, "US", "DE", "GB"]
+
+
+def _try_curl_cffi_chain(
+    url: str,
+    request: ScrapeRequest,
+    res_proxy: Optional[str],
+    start_time: float,
+) -> Optional[tuple[int, str, str, str, str, Optional[str]]]:
+    """
+    Runs the curl_cffi retry chain.
+    Returns (status_code, html, title, final_url, proxy_used, country) on success.
+    Returns None if all attempts are blocked or fail.
+    """
+    countries = _build_cffi_country_chain(request)
+    for country in countries:
+        # Soft timeout check
+        if time.time() - start_time > 70.0:
+            logger.warning("curl_cffi: soft timeout reached, stopping retry chain.")
+            break
+        country_label = country or "Default"
+        logger.info(f"curl_cffi attempt with country={country_label}...")
+        try:
+            status_code, html, title, final_url = scrape_with_curl_cffi(
+                url, proxy_url=res_proxy, proxy_country=country, timeout=15
+            )
+            blocked = is_bot_blocked(status_code, title, html)
+            if blocked:
+                logger.info(f"curl_cffi blocked (status {status_code}) with country={country_label}. Trying next...")
+                continue
+            if not is_meaningful_html(html):
+                logger.info(f"curl_cffi returned SPA skeleton with country={country_label}. Needs browser rendering.")
+                return None  # SPA detected — no point retrying curl_cffi
+            proxy_name = f"curl_cffi (Residential {country_label})"
+            return status_code, html, title, final_url, proxy_name, country
+        except Exception as e:
+            logger.warning(f"curl_cffi attempt country={country_label} failed: {e}")
+            continue
+    return None
+
+
+# ---------------------------------------------------------------------------
+#  Main Entry Point: Hybrid scrape_single_page
+# ---------------------------------------------------------------------------
+
+async def scrape_single_page(
+    url: str,
+    request: ScrapeRequest,
+    rotating_proxy_url: Optional[str] = None,
+    job_id: Optional[str] = None,
+) -> dict:
+    """
+    Hybrid scraping pipeline:
+    - Fast Path (curl_cffi first):  When no browser features are requested.
+    - Browser Path (Playwright first): When screenshot, wait_for_selector,
+      or page_crawling are requested.
+    Both paths fall back to the other engine on failure.
+    """
+    start_time = time.time()
+    dc_proxy, res_proxy = get_proxy_urls(rotating_proxy_url)
+
+    filters = request.response_filters or ResponseFilters()
+
+    logger.info(f"Starting hybrid scrape for URL: {url} (Job-ID: {job_id})")
+
+    # Determine if we need browser-only features
+    needs_browser = (
+        filters.include_screenshot
+        or request.wait_for_selector
+        or request.page_crawling
+    )
+
+    # ===================================================================
+    #  FAST PATH: curl_cffi first, Playwright fallback
+    # ===================================================================
+    if not needs_browser:
+        logger.info("Routing: Fast Path (curl_cffi first)")
+
+        cffi_result = _try_curl_cffi_chain(url, request, res_proxy, start_time)
+
+        if cffi_result is not None:
+            status_code, html, title, final_url, proxy_used, country = cffi_result
+            execution_time_ms = int((time.time() - start_time) * 1000)
+            logger.info(f"curl_cffi succeeded in {execution_time_ms}ms using {proxy_used}")
+            return build_result_from_html(
+                html_content=html,
+                url=final_url,
+                page_title=title,
+                status_code=status_code,
+                request=request,
+                filters=filters,
+                execution_time_ms=execution_time_ms,
+                proxy_used=proxy_used,
+                stealth_active=False,
+                scrape_engine="curl_cffi",
+            )
+
+        # curl_cffi failed or SPA detected — fall through to Playwright
+        logger.info("curl_cffi fast path failed. Falling back to Playwright...")
+
+    # ===================================================================
+    #  BROWSER PATH: Playwright (with retry chain)
+    # ===================================================================
+    logger.info("Routing: Browser Path (Playwright)")
+    attempts = _build_playwright_attempts(request, dc_proxy, res_proxy)
+
+    pw_success = False
+    pw_html = ""
+    pw_title = ""
+    pw_status = 200
+    pw_screenshot = None
+    pw_status_detail = None
+    pw_proxy_used = "Playwright"
+    pw_last_exception = None
 
     for idx, attempt in enumerate(attempts):
-        logger.info(f"Scraping attempt {idx+1}/{len(attempts)} using {attempt['name']}...")
-        proxy_used = attempt["name"]
-        stealth_active = attempt["use_stealth"]
-        
-        # Check soft timeout (70s) to avoid exceeding 90s queue limit
-        elapsed_time = time.time() - start_time
-        if elapsed_time > 70.0 and idx > 0:
-            logger.warning(f"Soft timeout reached after {elapsed_time:.2f}s. Stopping retry loop.")
+        logger.info(f"Playwright attempt {idx+1}/{len(attempts)} using {attempt['name']}...")
+        pw_proxy_used = attempt["name"]
+
+        # Soft timeout (70s) to stay within queue limit
+        if time.time() - start_time > 70.0 and idx > 0:
+            logger.warning("Playwright: soft timeout reached. Stopping retry loop.")
             break
-            
-        browser = None
-        context = None
-        page = None
-        
+
         try:
-            async with async_playwright() as p:
-                browser, context, page = await launch_stealth_browser(
-                    p, 
-                    proxy_url=attempt["proxy_url"], 
-                    use_stealth=attempt["use_stealth"],
-                    custom_headers=request.custom_headers,
-                    custom_cookies=request.custom_cookies,
-                    block_media=request.block_media,
-                    include_screenshot=filters.include_screenshot,
-                    proxy_country=attempt["country"],
-                    proxy_session=attempt["session"]
-                )
-                
-                # Navigation
-                wait_until_option = request.wait_until
-                if wait_until_option == "auto":
-                    response = await page.goto(url, wait_until="domcontentloaded", timeout=20000)
-                    try:
-                        await page.wait_for_load_state("networkidle", timeout=3000)
-                    except Exception:
-                        pass
-                else:
-                    playwright_wait = "networkidle" if wait_until_option == "networkidle" else ("load" if wait_until_option == "load" else "domcontentloaded")
-                    response = await page.goto(url, wait_until=playwright_wait, timeout=30000)
-                status_code = response.status if response else 200
-                
-                if request.wait_for_selector:
-                    try:
-                        await page.wait_for_selector(request.wait_for_selector, timeout=10000)
-                    except Exception as e:
-                        logger.warning(f"Warten auf Selector '{request.wait_for_selector}' lief in ein Timeout: {e}")
-                        
-                await pierce_shadow_dom_js(page)
-                
-                page_title = await page.title()
-                html_content = await page.content()
-                
-                # Check if blocked
-                is_blocked = is_bot_blocked(status_code, page_title, html_content)
-                
-                if is_blocked and idx < len(attempts) - 1:
-                    # Trigger retry via exception
-                    raise Exception(f"Bot block or rate limit (status {status_code}) on {attempt['name']}. Retrying next fallback...")
-                
-                # We either succeeded, or we are on the final attempt (where we have to return the block page)
-                if is_blocked:
-                    status_detail = f"Access denied (status {status_code}) on {attempt['name']}. Gated by bot detection or rate limit."
-                    logger.warning(f"Access denied on final attempt (status {status_code}) using {attempt['name']} for {url}")
-                else:
-                    status_detail = None
-                    success = True
-                    logger.info(f"Scraping successful using {attempt['name']} (status {status_code})")
-                    
-                # Post-navigation processing
-                await dismiss_cookie_banners(page)
-                await auto_scroll_page(page, max_scrolls=5)
-                
-                # Grab final content after scroll
-                html_content = await page.content()
-                page_title = await page.title()
-                
-                # Check for login wall
-                final_url = page.url
-                login_wall_platform = check_login_wall(final_url, html_content)
-                if login_wall_platform:
-                    if status_detail:
-                        status_detail += f" | {login_wall_platform}"
-                    else:
-                        status_detail = login_wall_platform
-                        
-                # Take screenshot
-                if filters.include_screenshot and job_id:
-                    screenshot_dir = "./app/data/screenshots"
-                    os.makedirs(screenshot_dir, exist_ok=True)
-                    screenshot_path = f"{screenshot_dir}/{job_id}.png"
-                    try:
-                        await page.screenshot(path=screenshot_path, full_page=True, timeout=15000)
-                        screenshot_url = f"/v1/web/screenshots/{job_id}.png"
-                    except Exception as e:
-                        logger.warning(f"Vollseiten-Screenshot fehlgeschlagen: {e}. Nutze Viewport-Screenshot.")
-                        try:
-                            await page.screenshot(path=screenshot_path, full_page=False)
-                            screenshot_url = f"/v1/web/screenshots/{job_id}.png"
-                        except Exception as err_sc:
-                            logger.error(f"Screenshot-Generierung gänzlich fehlgeschlagen: {err_sc}")
-                            
-                # Close page/browser
-                await page.close()
-                await context.close()
-                await browser.close()
-                browser = None
-                context = None
-                page = None
-                
-                break
-                
-        except Exception as attempt_err:
-            logger.warning(f"Scrape attempt {idx+1} ({attempt['name']}) failed: {attempt_err}")
-            last_exception = attempt_err
-            if page:
-                try: await page.close()
-                except Exception: pass
-            if context:
-                try: await context.close()
-                except Exception: pass
-            if browser:
-                try: await browser.close()
-                except Exception: pass
-            browser = None
-            context = None
-            page = None
-            
-    if not success and not status_detail:
-        if last_exception:
-            setattr(last_exception, "proxy_used", proxy_used)
-            setattr(last_exception, "stealth_active", stealth_active)
-            raise last_exception
-        else:
-            raise Exception("All scraping attempts failed due to network or browser errors.")
-        
-    # --- Post-Processing mit BeautifulSoup ---
-    soup = BeautifulSoup(html_content, "html.parser")
-    
-    # Meta-Daten extrahieren vor der Bereinigung
-    meta_desc_tag = soup.find("meta", attrs={"name": "description"}) or soup.find("meta", attrs={"property": "og:description"})
-    meta_description = meta_desc_tag.get("content", "").strip() if meta_desc_tag else ""
-    
-    # 1. Extrahierte Daten (Links, Bilder, Tabellen)
-    extracted_links = []
-    for link in soup.find_all("a", href=True):
-        absolute_href = urljoin(url, link["href"])
-        # Nur HTTP Links berücksichtigen
-        if absolute_href.startswith("http"):
-            extracted_links.append(absolute_href)
-    # Eindeutige Links behalten
-    extracted_links = list(dict.fromkeys(extracted_links))
-    
-    extracted_images = []
-    for img in soup.find_all("img", src=True):
-        absolute_src = urljoin(url, img["src"])
-        if absolute_src.startswith("http"):
-            extracted_images.append(absolute_src)
-    extracted_images = list(dict.fromkeys(extracted_images))
-    
-    extracted_tables = extract_tables_from_soup(soup)
-    
-    # 2. Boilerplate entfernen
-    cleaned_soup = clean_html_boilerplate(soup)
-    cleaned_html = str(cleaned_soup)
-    
-    # 3. HTML in Markdown konvertieren
-    markdown_text = markdownify.markdownify(cleaned_html, heading_style="ATX").strip()
-    
-    # Markdown säubern (mehrfache Zeilenumbrüche entfernen)
-    markdown_text = re.sub(r"\n{3,}", "\n\n", markdown_text)
-    
-    execution_time = int((time.time() - start_time) * 1000)
-    
-    # Pydantic-Response aufbauen
-    meta = Metadata(
-        url=url,
-        title=page_title,
-        description=meta_description,
-        status=status_code,
-        execution_time_ms=execution_time,
-        status_detail=status_detail
-    )
-    
-    response_data = {
-        "meta": meta.model_dump(),
-        "proxy_used": proxy_used,
-        "stealth_active": stealth_active
-    }
-    
-    if filters.include_markdown:
-        response_data["content_md"] = markdown_text
-        if request.chunk_size:
-            overlap = request.chunk_overlap or 0
-            response_data["chunks"] = chunk_markdown_content(markdown_text, request.chunk_size, overlap)
-            
-    if filters.include_html:
-        response_data["html"] = html_content
-        
-    if filters.include_extracted_data:
-        response_data["extracted_data"] = ExtractedData(
-            links=extracted_links,
-            tables=extracted_tables,
-            images=extracted_images
-        ).model_dump()
-        
-    if screenshot_url:
-        response_data["screenshot_url"] = screenshot_url
-        
-    return response_data
+            ok, status, html, title, screenshot, detail = await _run_playwright_attempt(
+                url, request, filters, attempt, job_id
+            )
+            pw_success = True
+            pw_status = status
+            pw_html = html
+            pw_title = title
+            pw_screenshot = screenshot
+            pw_status_detail = detail
+            logger.info(f"Playwright succeeded using {attempt['name']} (status {status})")
+            break
+        except Exception as err:
+            logger.warning(f"Playwright attempt {idx+1} ({attempt['name']}) failed: {err}")
+            pw_last_exception = err
+
+    if pw_success:
+        execution_time_ms = int((time.time() - start_time) * 1000)
+        return build_result_from_html(
+            html_content=pw_html,
+            url=url,
+            page_title=pw_title,
+            status_code=pw_status,
+            request=request,
+            filters=filters,
+            execution_time_ms=execution_time_ms,
+            screenshot_url=pw_screenshot,
+            status_detail=pw_status_detail,
+            proxy_used=pw_proxy_used,
+            stealth_active=True,
+            scrape_engine="playwright",
+        )
+
+    # ===================================================================
+    #  CROSS-FALLBACK: Playwright failed → try curl_cffi as last resort
+    # ===================================================================
+    if needs_browser:
+        logger.info("Playwright failed on all proxies. Attempting curl_cffi cross-fallback...")
+        cffi_result = _try_curl_cffi_chain(url, request, res_proxy, start_time)
+        if cffi_result is not None:
+            status_code, html, title, final_url, proxy_used, country = cffi_result
+            execution_time_ms = int((time.time() - start_time) * 1000)
+            fallback_detail = "Browser engine blocked by all proxies. Falling back to lightweight scraper. Screenshot unavailable for this target."
+            logger.info(f"curl_cffi cross-fallback succeeded in {execution_time_ms}ms")
+            return build_result_from_html(
+                html_content=html,
+                url=final_url,
+                page_title=title,
+                status_code=status_code,
+                request=request,
+                filters=filters,
+                execution_time_ms=execution_time_ms,
+                status_detail=fallback_detail,
+                proxy_used=proxy_used,
+                stealth_active=False,
+                scrape_engine="curl_cffi",
+            )
+
+    # ===================================================================
+    #  TOTAL FAILURE: Both engines failed
+    # ===================================================================
+    if pw_last_exception:
+        setattr(pw_last_exception, "proxy_used", pw_proxy_used)
+        setattr(pw_last_exception, "stealth_active", True)
+        raise pw_last_exception
+    raise Exception("All scraping attempts failed (both curl_cffi and Playwright).")
 
 async def run_crawler_pipeline(
     request: ScrapeRequest, 

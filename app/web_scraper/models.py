@@ -80,3 +80,4 @@ class ScrapeResponse(BaseModel):
     screenshot_url: Optional[str] = Field(None, description="Ein temporärer Link zum generierten Screenshot der Seite.")
     chunks: Optional[List[str]] = Field(None, description="Das zerschnittene Markdown, falls Chunking angefordert wurde.")
     crawled_pages: Optional[List[Dict[str, Any]]] = Field(None, description="Scraping-Ergebnisse der gecrawlten Unterseiten.")
+    scrape_engine: Optional[str] = Field(None, description="The scraping engine used: 'curl_cffi' (fast/lightweight) or 'playwright' (full browser).")
