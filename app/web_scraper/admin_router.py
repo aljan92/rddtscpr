@@ -24,7 +24,7 @@ async def web_admin_dashboard(
     db: Session = Depends(get_db)
 ):
     # Logs laden
-    logs = db.query(WebScraperRequestLog).order_by(WebScraperRequestLog.timestamp.desc()).limit(50).all()
+    logs = db.query(WebScraperRequestLog).order_by(WebScraperRequestLog.timestamp.desc()).limit(100).all()
     
     # Berechne Statistiken
     total_requests = db.query(WebScraperRequestLog).count()
@@ -200,3 +200,19 @@ async def web_get_evomi_balance_endpoint(
     # Reuse existing global endpoint implementation
     from app.reddit_scraper.admin_router import get_evomi_balance_endpoint
     return await get_evomi_balance_endpoint(username)
+
+@router.get("/admin/web-scraper/logs/{log_id}/json")
+async def get_log_json(
+    log_id: int,
+    username: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    log = db.query(WebScraperRequestLog).filter(WebScraperRequestLog.id == log_id).first()
+    if not log:
+        raise HTTPException(status_code=404, detail="Log nicht gefunden")
+    try:
+        data = json.loads(log.response_json) if log.response_json else {"error": log.error_message or "Keine Antwortdaten vorhanden"}
+    except Exception:
+        data = {"raw": log.response_json}
+    return data
+

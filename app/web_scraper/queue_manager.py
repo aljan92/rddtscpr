@@ -302,7 +302,6 @@ class WebScrapeQueueManager:
                                 db_job.error_message = error_msg
                             db.commit()
                         
-                    # Request Log IMMER schreiben (auch für Playground)
                     log_entry = WebScraperRequestLog(
                         url=request.url,
                         status_code=status_code,
@@ -311,7 +310,8 @@ class WebScrapeQueueManager:
                         processing_time_ms=processing_duration_ms,
                         proxy_used=proxy_used,
                         stealth_mode_active=stealth_active,
-                        error_message=error_msg
+                        error_message=error_msg,
+                        response_json=json.dumps(result) if result is not None else None
                     )
                     db.add(log_entry)
                     db.commit()

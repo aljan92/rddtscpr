@@ -82,6 +82,7 @@ class WebScraperRequestLog(Base):
     proxy_used = Column(String(255), nullable=True)
     stealth_mode_active = Column(Boolean, default=False)
     error_message = Column(Text, nullable=True)
+    response_json = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
 
@@ -114,6 +115,11 @@ def init_db():
     try:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE web_scraper_request_logs ADD COLUMN processing_time_ms INTEGER DEFAULT 0"))
+    except Exception:
+        pass
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE web_scraper_request_logs ADD COLUMN response_json TEXT"))
     except Exception:
         pass
 
