@@ -791,19 +791,27 @@ def _build_playwright_attempts(
         from app.web_scraper.queue_manager import web_scrape_queue
         proxy_mode = getattr(web_scrape_queue, "proxy_mode", "auto")
 
-        if proxy_mode != "stealth" and not skip_datacenter:
-            attempts.append({
-                "name": "Evomi Datacenter",
-                "proxy_url": dc_proxy,
-                "country": None,
-                "session": None,
-                "use_stealth": False,
-            })
+        if skip_datacenter:
+            # If Cloudflare was detected, we skip datacenter and untargeted residential attempts
+            # to ensure strict alignment between IP location and browser locale/timezone.
+            logger.info("Cloudflare detected: starting directly with country-targeted residential proxies.")
+            attempts.append({"name": "Evomi Residential (DE)", "proxy_url": res_proxy, "country": "DE", "session": make_sess(), "use_stealth": True})
+            attempts.append({"name": "Evomi Residential (US)", "proxy_url": res_proxy, "country": "US", "session": make_sess(), "use_stealth": True})
+            attempts.append({"name": "Evomi Residential (GB)", "proxy_url": res_proxy, "country": "GB", "session": make_sess(), "use_stealth": True})
+        else:
+            if proxy_mode != "stealth" and not skip_datacenter:
+                attempts.append({
+                    "name": "Evomi Datacenter",
+                    "proxy_url": dc_proxy,
+                    "country": None,
+                    "session": None,
+                    "use_stealth": False,
+                })
 
-        attempts.append({"name": "Evomi Residential (Default)", "proxy_url": res_proxy, "country": None, "session": make_sess(), "use_stealth": True})
-        attempts.append({"name": "Evomi Residential (US)", "proxy_url": res_proxy, "country": "US", "session": make_sess(), "use_stealth": True})
-        attempts.append({"name": "Evomi Residential (DE)", "proxy_url": res_proxy, "country": "DE", "session": make_sess(), "use_stealth": True})
-        attempts.append({"name": "Evomi Residential (GB)", "proxy_url": res_proxy, "country": "GB", "session": make_sess(), "use_stealth": True})
+            attempts.append({"name": "Evomi Residential (Default)", "proxy_url": res_proxy, "country": None, "session": make_sess(), "use_stealth": True})
+            attempts.append({"name": "Evomi Residential (US)", "proxy_url": res_proxy, "country": "US", "session": make_sess(), "use_stealth": True})
+            attempts.append({"name": "Evomi Residential (DE)", "proxy_url": res_proxy, "country": "DE", "session": make_sess(), "use_stealth": True})
+            attempts.append({"name": "Evomi Residential (GB)", "proxy_url": res_proxy, "country": "GB", "session": make_sess(), "use_stealth": True})
 
     return attempts
 
