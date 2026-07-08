@@ -252,6 +252,10 @@ class WebScrapeQueueManager:
             request.status = "Fehlgeschlagen"
             logger.error(f"Fehler beim Scraping von {request.url}: {e}")
             
+            # Extract actual proxy and stealth active from exception properties
+            proxy_used = getattr(e, "proxy_used", proxy_used)
+            stealth_active = getattr(e, "stealth_active", stealth_active)
+            
             if not request.future.done():
                 request.future.set_exception(e)
                 
