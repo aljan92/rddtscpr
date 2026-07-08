@@ -77,6 +77,8 @@ class WebScraperRequestLog(Base):
     url = Column(Text, nullable=False)
     status_code = Column(Integer, nullable=False)
     response_time_ms = Column(Integer, nullable=False)
+    wait_time_ms = Column(Integer, nullable=True, default=0)
+    processing_time_ms = Column(Integer, nullable=True, default=0)
     proxy_used = Column(String(255), nullable=True)
     stealth_mode_active = Column(Boolean, default=False)
     error_message = Column(Text, nullable=True)
@@ -102,6 +104,16 @@ def init_db():
     try:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE reddit_accounts ADD COLUMN screenshot_viewed BOOLEAN DEFAULT TRUE"))
+    except Exception:
+        pass
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE web_scraper_request_logs ADD COLUMN wait_time_ms INTEGER DEFAULT 0"))
+    except Exception:
+        pass
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE web_scraper_request_logs ADD COLUMN processing_time_ms INTEGER DEFAULT 0"))
     except Exception:
         pass
 

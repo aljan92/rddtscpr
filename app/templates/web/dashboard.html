@@ -220,7 +220,13 @@
                                     {% endif %}
                                 </td>
                                 <td class="px-6 py-4 font-mono text-xs text-slate-400">
-                                    {{ log.response_time_ms }} ms
+                                    <div class="flex flex-col space-y-0.5">
+                                        <span class="text-white font-medium">{{ log.response_time_ms }} ms</span>
+                                        <span class="text-slate-500 text-[10px] whitespace-nowrap">
+                                            Warten: {{ log.wait_time_ms if log.wait_time_ms is not none else 0 }} ms | 
+                                            Scrape: {{ log.processing_time_ms if log.processing_time_ms is not none else log.response_time_ms }} ms
+                                        </span>
+                                    </div>
                                 </td>
                                 <td class="px-6 py-4 text-xs">
                                     {{ log.proxy_used or '-' }}

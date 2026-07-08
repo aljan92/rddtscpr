@@ -227,6 +227,7 @@ class WebScrapeQueueManager:
         settings = load_settings()
         rotating_proxy = settings.get("rotating_proxy_url", "")
         
+        start_time_dt = datetime.utcnow()
         start_time = time.time()
         status_code = 200
         error_msg = None
@@ -259,7 +260,11 @@ class WebScrapeQueueManager:
             if not request.future.done():
                 request.future.set_exception(e)
                 
-        duration = int((time.time() - start_time) * 1000)
+        # Durations berechnen
+        wait_duration_ms = int((start_time_dt - request.created_at).total_seconds() * 1000)
+        processing_duration_ms = int((time.time() - start_time) * 1000)
+        duration = wait_duration_ms + processing_duration_ms
+        
         request.completed_at = datetime.utcnow()
         
         # Aus active_requests entfernen
@@ -285,6 +290,8 @@ class WebScrapeQueueManager:
                     url=request.url,
                     status_code=status_code,
                     response_time_ms=duration,
+                    wait_time_ms=wait_duration_ms,
+                    processing_time_ms=processing_duration_ms,
                     proxy_used=proxy_used,
                     stealth_mode_active=stealth_active,
                     error_message=error_msg
