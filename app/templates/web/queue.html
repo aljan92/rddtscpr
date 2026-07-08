@@ -150,6 +150,17 @@
                                    class="w-full bg-scraper-dark/50 border border-scraper-border rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-scraper-emerald focus:ring-1 focus:ring-scraper-emerald transition-all duration-200 font-medium">
                         </div>
 
+                        <div>
+                            <label for="proxy_mode" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                                Scrape-Modus (Proxy & Stealth)
+                            </label>
+                            <select name="proxy_mode" id="proxy_mode"
+                                    class="w-full bg-scraper-dark/50 border border-scraper-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-scraper-emerald focus:ring-1 focus:ring-scraper-emerald transition-all duration-200 font-medium">
+                                <option value="auto" {% if proxy_mode == 'auto' %}selected{% endif %}>Auto (Datacenter -> Residential-Retry)</option>
+                                <option value="stealth" {% if proxy_mode == 'stealth' %}selected{% endif %}>Stealth (Direkt Residential Proxy & Stealth)</option>
+                            </select>
+                        </div>
+
                         <button type="submit" class="w-full bg-scraper-emerald hover:bg-emerald-400 text-scraper-dark font-bold py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center space-x-2 shadow-lg shadow-scraper-emerald/20">
                             <i data-lucide="save" class="w-4 h-4"></i>
                             <span>Speichern</span>

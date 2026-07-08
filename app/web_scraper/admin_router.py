@@ -106,6 +106,7 @@ async def web_admin_queue(
         "request": request,
         "max_workers": web_scrape_queue.min_workers,
         "max_capacity": web_scrape_queue.max_capacity,
+        "proxy_mode": web_scrape_queue.proxy_mode,
         "stats": status["stats"],
         "requests": status["requests"]
     })
@@ -114,6 +115,7 @@ async def web_admin_queue(
 async def web_admin_queue_settings(
     max_workers: int = Form(5),
     max_capacity: int = Form(20),
+    proxy_mode: str = Form("auto"),
     username: str = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
@@ -121,9 +123,12 @@ async def web_admin_queue_settings(
         return RedirectResponse(url="/admin/web-scraper/queue?error=Basis-Workers+muss+zwischen+1+und+100+liegen.", status_code=303)
     if max_capacity < max_workers or max_capacity > 100:
         return RedirectResponse(url=f"/admin/web-scraper/queue?error=Max-Kapazität+muss+mindestens+so+groß+wie+Basis-Sessions+({max_workers})+und+maximal+100+sein.", status_code=303)
+    if proxy_mode not in ["auto", "stealth"]:
+        proxy_mode = "auto"
     try:
         web_scrape_queue.min_workers = max_workers
         web_scrape_queue.max_capacity = max_capacity
+        web_scrape_queue.proxy_mode = proxy_mode
         web_scrape_queue.resize_worker_pool(max_workers)
         
         # Save Basis-Workers
@@ -141,6 +146,14 @@ async def web_admin_queue_settings(
         else:
             cap_setting = SystemSetting(key="web_scraper_max_capacity", value=str(max_capacity))
             db.add(cap_setting)
+
+        # Save Proxy-Mode
+        pm_setting = db.query(SystemSetting).filter(SystemSetting.key == "web_scraper_proxy_mode").first()
+        if pm_setting:
+            pm_setting.value = proxy_mode
+        else:
+            pm_setting = SystemSetting(key="web_scraper_proxy_mode", value=proxy_mode)
+            db.add(pm_setting)
             
         db.commit()
         return RedirectResponse(url="/admin/web-scraper/queue?success=Einstellungen+erfolgreich+gespeichert!", status_code=303)
