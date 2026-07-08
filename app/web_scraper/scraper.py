@@ -129,11 +129,40 @@ async def launch_stealth_browser(
         args=browser_args
     )
     
+    # Dynamic locale & timezone based on targeted proxy country to avoid bot detection signature mismatch
+    country_metadata = {
+        "US": {"locale": "en-US", "timezone": "America/New_York"},
+        "DE": {"locale": "de-DE", "timezone": "Europe/Berlin"},
+        "GB": {"locale": "en-GB", "timezone": "Europe/London"},
+        "AU": {"locale": "en-AU", "timezone": "Australia/Sydney"},
+        "BR": {"locale": "pt-BR", "timezone": "America/Sao_Paulo"},
+        "CN": {"locale": "zh-CN", "timezone": "Asia/Shanghai"},
+        "RU": {"locale": "ru-RU", "timezone": "Europe/Moscow"},
+        "FR": {"locale": "fr-FR", "timezone": "Europe/Paris"},
+        "ES": {"locale": "es-ES", "timezone": "Europe/Madrid"},
+        "IT": {"locale": "it-IT", "timezone": "Europe/Rome"},
+        "CA": {"locale": "en-CA", "timezone": "America/Toronto"},
+        "IN": {"locale": "en-IN", "timezone": "Asia/Kolkata"},
+        "JP": {"locale": "ja-JP", "timezone": "Asia/Tokyo"}
+    }
+    
+    selected_locale = "de-DE"
+    selected_timezone = "Europe/Berlin"
+    
+    if proxy_country:
+        meta = country_metadata.get(proxy_country.upper())
+        if meta:
+            selected_locale = meta["locale"]
+            selected_timezone = meta["timezone"]
+        else:
+            selected_locale = "en-US"
+            selected_timezone = "UTC"
+            
     context_options = {
         "user_agent": DEFAULT_USER_AGENT,
         "viewport": {"width": 1280, "height": 800},
-        "locale": "de-DE",
-        "timezone_id": "Europe/Berlin",
+        "locale": selected_locale,
+        "timezone_id": selected_timezone,
         "ignore_https_errors": True
     }
     
