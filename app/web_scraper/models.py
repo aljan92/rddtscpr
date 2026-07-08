@@ -24,7 +24,7 @@ class ScrapeRequest(BaseModel):
     response_filters: Optional[ResponseFilters] = Field(default_factory=ResponseFilters, description="Steuert, welche Teile des Payloads zurückgegeben werden sollen, um Token zu sparen.")
     block_media: bool = Field(True, description="Blockiert Bilder, Fonts und Stylesheets, um die Ladezeit massiv zu beschleunigen.")
     wait_for_selector: Optional[str] = Field(None, description="Ein optionaler CSS-Selector, auf den gewartet wird, bevor der Inhalt extrahiert wird.", example="#content-loaded")
-    wait_until: str = Field("networkidle", description="Warte-Bedingung für dynamische Inhalte: 'networkidle' (0.5s keine Netzwerkanfragen), 'load' oder 'domcontentloaded'.", example="networkidle")
+    wait_until: str = Field("domcontentloaded", description="Warte-Bedingung für dynamische Inhalte: 'networkidle' (0.5s keine Netzwerkanfragen), 'load' oder 'domcontentloaded'.", example="domcontentloaded")
     page_crawling: bool = Field(False, description="Aktiviert das automatische Scraping von verlinkten Unterseiten derselben Domain.")
     max_crawl_depth: int = Field(1, description="Die maximale Tiefe für das Crawling von Unterseiten (1 = nur direkt verlinkte Seiten).")
     max_crawl_pages: int = Field(5, description="Das absolute Limit für die Anzahl an Unterseiten, die gescraped werden sollen.")
@@ -47,7 +47,7 @@ class ScrapeRequest(BaseModel):
                 },
                 "block_media": True,
                 "wait_for_selector": None,
-                "wait_until": "networkidle",
+                "wait_until": "domcontentloaded",
                 "page_crawling": False,
                 "max_crawl_depth": 1,
                 "max_crawl_pages": 5,
